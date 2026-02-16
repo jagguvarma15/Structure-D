@@ -1,0 +1,17 @@
+---
+globs: structure_d/ingestion/*.py
+---
+
+# Parser Guidelines
+
+## Adding a New Parser
+1. Create a class extending `BaseParser` from [structure_d/ingestion/base.py](mdc:structure_d/ingestion/base.py)
+2. Set `supported_extensions` class attribute
+3. Implement `async def parse(self, file_path: Path, **kwargs) -> ParsedDocument`
+4. Use `asyncio.get_event_loop().run_in_executor(None, sync_fn)` for blocking I/O
+5. Register the parser in [structure_d/ingestion/manager.py](mdc:structure_d/ingestion/manager.py) `build_default_registry()`
+
+## Key Contract
+- Return a `ParsedDocument` with `metadata`, `text`, `pages`, and optionally `tables` / `images`
+- Always populate `DocumentMetadata` with filename, source, extension, file size
+- Catch library-specific exceptions and raise descriptive errors

@@ -1,0 +1,87 @@
+# ──────────────────────────────────────────────────────────────
+# Structure-D – model registry
+# ──────────────────────────────────────────────────────────────
+# Each entry describes a model available for inference.
+# The router uses task, size and cost hints to pick the best fit.
+
+models:
+  # ── Small / Classification ──────────────────────────────────
+  - name: "Qwen/Qwen2.5-1.5B-Instruct"
+    alias: "qwen-1.5b"
+    tasks: [classification, sentiment]
+    size_b: 1.5
+    quantisation: null
+    max_context: 4096
+    cost_per_1k_tokens: 0.001
+    supports_structured_output: true
+    notes: "Fast, cheap; great for binary/multi-class tasks."
+
+  - name: "mistralai/Mistral-7B-Instruct-v0.3"
+    alias: "mistral-7b"
+    tasks: [classification, sentiment, extraction]
+    size_b: 7
+    quantisation: null
+    max_context: 8192
+    cost_per_1k_tokens: 0.005
+    supports_structured_output: true
+
+  # ── Medium / Extraction & Summarisation ─────────────────────
+  - name: "meta-llama/Llama-3.1-8B-Instruct"
+    alias: "llama-3.1-8b"
+    tasks: [extraction, classification, summarisation]
+    size_b: 8
+    quantisation: null
+    max_context: 8192
+    cost_per_1k_tokens: 0.008
+    supports_structured_output: true
+    notes: "Good all-rounder for extraction and summarisation."
+
+  - name: "meta-llama/Llama-3.1-13B-Instruct"
+    alias: "llama-3.1-13b"
+    tasks: [extraction, summarisation]
+    size_b: 13
+    quantisation: null
+    max_context: 8192
+    cost_per_1k_tokens: 0.015
+    supports_structured_output: true
+
+  # ── Large / Complex Extraction & Reasoning ──────────────────
+  - name: "deepseek-ai/DeepSeek-R1-Distill-Llama-70B"
+    alias: "deepseek-r1-70b"
+    tasks: [extraction, summarisation, reasoning]
+    size_b: 70
+    quantisation: "AWQ"
+    max_context: 16384
+    cost_per_1k_tokens: 0.06
+    supports_structured_output: true
+    notes: "High accuracy; use for complex extraction or reasoning tasks."
+
+  - name: "meta-llama/Llama-3.1-70B-Instruct"
+    alias: "llama-3.1-70b"
+    tasks: [extraction, summarisation, reasoning]
+    size_b: 70
+    quantisation: "GPTQ"
+    max_context: 8192
+    cost_per_1k_tokens: 0.06
+    supports_structured_output: true
+
+  # ── Multimodal / Vision (for images, scanned docs) ──────────
+  - name: "Qwen/Qwen2-VL-7B-Instruct"
+    alias: "qwen-vl-7b"
+    tasks: [multimodal, extraction, classification]
+    size_b: 7
+    quantisation: null
+    max_context: 4096
+    cost_per_1k_tokens: 0.01
+    supports_structured_output: true
+    multimodal: true
+    notes: "Vision-language model for images and scanned documents."
+
+# ── Task → model mapping defaults ────────────────────────────
+task_defaults:
+  classification: "qwen-1.5b"
+  sentiment: "qwen-1.5b"
+  extraction: "llama-3.1-8b"
+  summarisation: "llama-3.1-8b"
+  reasoning: "deepseek-r1-70b"
+  multimodal: "qwen-vl-7b"

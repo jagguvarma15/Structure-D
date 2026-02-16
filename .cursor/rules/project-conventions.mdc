@@ -1,0 +1,41 @@
+---
+alwaysApply: true
+---
+
+# Structure-D Project Conventions
+
+## Architecture
+Structure-D is a modular pipeline framework:
+`Ingestion → Preprocessing → Model Routing → vLLM Inference → Validation → Storage`
+
+- Entry point: [structure_d/cli.py](mdc:structure_d/cli.py) (CLI) or [structure_d/api/app.py](mdc:structure_d/api/app.py) (API)
+- Configuration: [structure_d/config.py](mdc:structure_d/config.py) loads from [configs/default.yaml](mdc:configs/default.yaml)
+- Pipeline orchestrator: [structure_d/pipeline/orchestrator.py](mdc:structure_d/pipeline/orchestrator.py)
+
+## Design Philosophy
+- **Format-focused, not domain-specific** — the framework handles *formats* (PDF, image, HTML, DOCX, etc.), not specific document types (invoice, resume)
+- **Generic schemas** — built-in schemas are task-oriented (key_value, table, entity, form, classification, summary), not domain-oriented
+- Users create custom schemas for their own domains as Pydantic models
+
+## Code Style
+- Python 3.10+ with `from __future__ import annotations`
+- Use `pydantic.BaseModel` for all data schemas and config models
+- Async-first: all I/O operations should be `async def`
+- Use `structlog` for logging (never `print()` in library code)
+- Type hints on all public functions
+
+## Key Patterns
+- **Parsers** extend `BaseParser` in [structure_d/ingestion/base.py](mdc:structure_d/ingestion/base.py)
+- **Schemas** go in `structure_d/schemas/` as Pydantic models — see [structure_d/schemas/generic.py](mdc:structure_d/schemas/generic.py) for built-ins
+- **Models** are registered via [configs/models.yaml](mdc:configs/models.yaml)
+- **Validation** uses `SchemaValidator` + `RetryHandler` with automatic LLM retry
+- **Storage** writers (JSONL, CSV, DB) are in `structure_d/storage/`
+- vLLM structured outputs use `guided_json` / `guided_regex` / `guided_choice` params
+
+## Dependencies
+- Core: pydantic, pyyaml, httpx, structlog, click
+- Optional extras: `[ingestion]`, `[inference]`, `[retrieval]`, `[storage]`, `[api]`, `[monitoring]`, `[all]`
+- Tests: pytest, pytest-asyncio
+
+## Testing
+Run with: `pytest tests/`

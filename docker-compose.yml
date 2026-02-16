@@ -1,0 +1,81 @@
+# ──────────────────────────────────────────────────────────────
+# Structure-D – docker-compose for local development
+# ──────────────────────────────────────────────────────────────
+
+services:
+  # ── Structure-D API ──────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./configs:/app/configs:ro
+      - ./output:/app/output
+      - ./logs:/app/logs
+    environment:
+      - SD_CONFIG_PATH=/app/configs/default.yaml
+      - SD_INFERENCE__VLLM__API_BASE=http://vllm:8000/v1
+    depends_on:
+      - vllm
+      - postgres
+    restart: unless-stopped
+
+  # ── vLLM inference server ───────────────────────────────────
+  vllm:
+    image: vllm/vllm-openai:latest
+    ports:
+      - "8000:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    command: >
+      --model meta-llama/Llama-3.1-8B-Instruct
+      --gpu-memory-utilization 0.90
+      --max-model-len 8192
+      --max-num-seqs 256
+      --enable-auto-tool-choice
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+    restart: unless-stopped
+
+  # ── PostgreSQL + pgvector ───────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: structure_d
+      POSTGRES_PASSWORD: structure_d
+      POSTGRES_DB: structure_d
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # ── ChromaDB (optional vector store) ────────────────────────
+  chroma:
+    image: chromadb/chroma:latest
+    ports:
+      - "8100:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    restart: unless-stopped
+
+  # ── Prometheus (optional monitoring) ────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    restart: unless-stopped
+
+volumes:
+  pg_data:
+  chroma_data:
+  hf_cache:
