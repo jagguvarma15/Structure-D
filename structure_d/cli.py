@@ -14,10 +14,34 @@ from structure_d import __version__
 logger = structlog.get_logger(__name__)
 
 
-@click.group()
+class _DefaultGroup(click.Group):
+    """
+    Custom Click group that launches the interactive terminal
+    when no subcommand is given.
+    """
+
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        # If no args at all, launch interactive terminal
+        if not args:
+            ctx.invoked_subcommand = None  # type: ignore[attr-defined]
+            ctx.invoke(interactive)
+            ctx.exit(0)
+        return super().parse_args(ctx, args)
+
+
+@click.group(cls=_DefaultGroup)
 @click.version_option(__version__)
 def main() -> None:
     """Structure-D: Convert unstructured data to structured formats."""
+
+
+@main.command(name="interactive")
+def interactive() -> None:
+    """Launch the interactive terminal (default when no command is given)."""
+    from structure_d.terminal import TerminalApp
+
+    app = TerminalApp()
+    app.run()
 
 
 @main.command()
