@@ -4,9 +4,9 @@ from __future__ import annotations
 
 LOGO = r"""
 [bold cyan]
-  ╔═╗╔╦╗╦═╗╦ ╦╔═╗╔╦╗╦ ╦╦═╗╔═╗       ╔╦╗
-  ╚═╗ ║ ╠╦╝║ ║║   ║ ║ ║╠╦╝║╣    ───   ║║
-  ╚═╝ ╩ ╩╚═╚═╝╚═╝ ╩ ╚═╝╩╚═╚═╝       ╔╩╝
+  ╔═╗╔╦╗╦═╗╦ ╦╔═╗╔╦╗╦ ╦╦═╗╔═╗  ╔═╗
+  ╚═╗ ║ ╠╦╝║ ║║   ║ ║ ║╠╦╝║╣   ║ ║
+  ╚═╝ ╩ ╩╚═╚═╝╚═╝ ╩ ╚═╝╩╚═╚═╝  ╚═╝
 [/bold cyan]"""
 
 TAGLINE = "[dim]Unstructured → Structured  ·  Any format, any schema, high-throughput vLLM inference[/dim]"
