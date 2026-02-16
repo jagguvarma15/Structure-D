@@ -63,6 +63,7 @@ class TerminalApp:
     # ── Banner ────────────────────────────────────────────────────────────────
 
     def _show_banner(self) -> None:
+        # Logo already has black background in its markup
         console.print(LOGO)
         console.print(f"  [bold white]v{__version__}[/bold white]   {TAGLINE}")
         console.print()
