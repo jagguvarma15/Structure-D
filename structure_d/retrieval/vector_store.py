@@ -127,13 +127,72 @@ class ChromaVectorStore(VectorStoreBase):
 
 class PGVectorStore(VectorStoreBase):
     """
-    PostgreSQL + pgvector backend (placeholder – production code would
-    use asyncpg / SQLAlchemy with the pgvector extension).
+    PostgreSQL + pgvector backend using asyncpg.
+    
+    Requires: ``pip install structure-d[storage]`` (includes asyncpg + pgvector)
+    
+    The store uses a table named ``embeddings`` with the following schema:
+    - id: VARCHAR PRIMARY KEY
+    - embedding: vector(embedding_dimension)
+    - document: TEXT
+    - metadata: JSONB
+    - created_at: TIMESTAMP
     """
 
-    def __init__(self, connection_string: str | None = None) -> None:
+    def __init__(
+        self,
+        connection_string: str | None = None,
+        table_name: str = "embeddings",
+        embedding_dimension: int | None = None,
+    ) -> None:
         settings = get_settings()
         self.connection_string = connection_string or settings.retrieval.pgvector.connection_string
+        self.table_name = table_name
+        self.embedding_dimension = embedding_dimension or settings.retrieval.embedding_dimension
+        self._pool = None
+
+    async def _ensure_pool(self) -> Any:
+        """Create connection pool if it doesn't exist."""
+        if self._pool is not None:
+            return self._pool
+        
+        try:
+            import asyncpg
+        except ImportError as e:
+            raise ImportError(
+                "PGVectorStore requires asyncpg. Install with: pip install structure-d[storage]"
+            ) from e
+        
+        # Parse connection string (remove +asyncpg if present)
+        conn_str = self.connection_string.replace("+asyncpg", "")
+        
+        self._pool = await asyncpg.create_pool(conn_str, min_size=1, max_size=10)
+        
+        # Ensure pgvector extension and table exist
+        async with self._pool.acquire() as conn:
+            # Enable pgvector extension
+            await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            
+            # Create table if it doesn't exist
+            await conn.execute(f"""
+                CREATE TABLE IF NOT EXISTS {self.table_name} (
+                    id VARCHAR PRIMARY KEY,
+                    embedding vector({self.embedding_dimension}),
+                    document TEXT NOT NULL,
+                    metadata JSONB DEFAULT '{{}}',
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            
+            # Create index for vector similarity search
+            await conn.execute(f"""
+                CREATE INDEX IF NOT EXISTS {self.table_name}_embedding_idx 
+                ON {self.table_name} 
+                USING ivfflat (embedding vector_cosine_ops)
+            """)
+        
+        logger.info("pgvector_initialized", table=self.table_name, dimension=self.embedding_dimension)
+        return self._pool
 
     async def add(
         self,
@@ -142,10 +201,42 @@ class PGVectorStore(VectorStoreBase):
         documents: list[str],
         metadatas: list[dict[str, Any]] | None = None,
     ) -> None:
-        raise NotImplementedError(
-            "PGVectorStore.add() requires asyncpg + pgvector. "
-            "Implement with your own SQL schema."
-        )
+        """Upsert documents with their embeddings."""
+        pool = await self._ensure_pool()
+        
+        if metadatas is None:
+            metadatas = [{}] * len(ids)
+        
+        if len(ids) != len(embeddings) != len(documents) != len(metadatas):
+            raise ValueError("ids, embeddings, documents, and metadatas must have the same length")
+        
+        import json
+        
+        async with pool.acquire() as conn:
+            # Use executemany for batch insert
+            for i, doc_id, embedding, doc, meta in zip(range(len(ids)), ids, embeddings, documents, metadatas):
+                if len(embedding) != self.embedding_dimension:
+                    raise ValueError(
+                        f"Embedding dimension mismatch: expected {self.embedding_dimension}, "
+                        f"got {len(embedding)}"
+                    )
+                
+                await conn.execute(
+                    f"""
+                    INSERT INTO {self.table_name} (id, embedding, document, metadata)
+                    VALUES ($1, $2::vector, $3, $4::jsonb)
+                    ON CONFLICT (id) DO UPDATE SET
+                        embedding = EXCLUDED.embedding,
+                        document = EXCLUDED.document,
+                        metadata = EXCLUDED.metadata
+                    """,
+                    doc_id,
+                    str(embedding),  # Convert to string for vector type
+                    doc,
+                    json.dumps(meta),
+                )
+        
+        logger.debug("pgvector_add", count=len(ids))
 
     async def query(
         self,
@@ -153,7 +244,66 @@ class PGVectorStore(VectorStoreBase):
         top_k: int = 5,
         filter_metadata: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        raise NotImplementedError("PGVectorStore.query() not yet implemented.")
+        """Return the top-k most similar documents using cosine similarity."""
+        pool = await self._ensure_pool()
+        
+        if len(embedding) != self.embedding_dimension:
+            raise ValueError(
+                f"Embedding dimension mismatch: expected {self.embedding_dimension}, "
+                f"got {len(embedding)}"
+            )
+        
+        # Build query with optional metadata filter
+        query = f"""
+            SELECT 
+                id,
+                document,
+                metadata,
+                1 - (embedding <=> $1::vector) as distance
+            FROM {self.table_name}
+        """
+        
+        params: list[Any] = [str(embedding)]
+        
+        if filter_metadata:
+            # Add JSONB filter conditions
+            conditions = []
+            for key, value in filter_metadata.items():
+                conditions.append(f"metadata->>'{key}' = ${len(params) + 1}")
+                params.append(str(value))
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+        
+        query += f" ORDER BY embedding <=> $1::vector LIMIT ${len(params) + 1}"
+        params.append(top_k)
+        
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(query, *params)
+        
+        return [
+            {
+                "id": row["id"],
+                "document": row["document"],
+                "metadata": row["metadata"] if isinstance(row["metadata"], dict) else {},
+                "distance": float(row["distance"]) if row["distance"] is not None else None,
+            }
+            for row in rows
+        ]
 
     async def delete(self, ids: list[str]) -> None:
-        raise NotImplementedError("PGVectorStore.delete() not yet implemented.")
+        """Delete documents by ID."""
+        pool = await self._ensure_pool()
+        
+        async with pool.acquire() as conn:
+            await conn.execute(
+                f"DELETE FROM {self.table_name} WHERE id = ANY($1::text[])",
+                ids,
+            )
+        
+        logger.debug("pgvector_delete", count=len(ids))
+    
+    async def close(self) -> None:
+        """Close the connection pool."""
+        if self._pool:
+            await self._pool.close()
+            self._pool = None
