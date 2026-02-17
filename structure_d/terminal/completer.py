@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from typing import Iterator
+
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.document import Document
 
@@ -51,7 +53,9 @@ _FLAGS = {
 class StructureDCompleter(Completer):
     """Context-aware autocomplete for the Structure-D REPL."""
 
-    def get_completions(self, document: Document, complete_event: object) -> ...:
+    def get_completions(
+        self, document: Document, complete_event: object
+    ) -> Iterator[Completion]:
         text = document.text_before_cursor
         words = text.split()
         word_before = document.get_word_before_cursor()

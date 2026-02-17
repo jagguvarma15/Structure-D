@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import structlog
 
+from structure_d.exceptions import ModelRoutingError
 from structure_d.models.registry import ModelEntry, ModelRegistry
 from structure_d.schemas.base import TaskType
 
@@ -75,8 +76,17 @@ class ModelRouter:
             # Fall back to the registry's default for the task
             default = self.registry.get_default_for_task(task)
             if default is None:
-                raise ValueError(
-                    f"No suitable model found for task={task.value} with the given constraints."
+                available = [m.alias or m.name for m in self.registry.list_models()]
+                raise ModelRoutingError(
+                    f"No suitable model found for task={task.value} with the given constraints",
+                    task=task.value,
+                    available_models=available,
+                    context={
+                        "input_tokens": str(input_tokens),
+                        "prefer_multimodal": str(prefer_multimodal),
+                        "max_cost_per_1k": str(max_cost_per_1k) if max_cost_per_1k else None,
+                        "max_size_b": str(max_size_b) if max_size_b else None,
+                    },
                 )
             logger.warning(
                 "model_router_fallback",

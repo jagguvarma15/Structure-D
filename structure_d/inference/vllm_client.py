@@ -9,6 +9,7 @@ import httpx
 import structlog
 
 from structure_d.config import get_settings
+from structure_d.exceptions import InferenceError
 
 logger = structlog.get_logger(__name__)
 
@@ -169,8 +170,15 @@ class VLLMClient:
 
                 await asyncio.sleep(wait)
 
-        raise RuntimeError(
-            f"vLLM request failed after {self.max_retries} retries"
+        raise InferenceError(
+            f"vLLM request failed after {self.max_retries} retries",
+            model=model if isinstance(model, str) else None,
+            status_code=getattr(last_exc, "status_code", None) if hasattr(last_exc, "status_code") else None,
+            response_body=str(last_exc) if last_exc else None,
+            context={
+                "api_base": self.api_base,
+                "retries": str(self.max_retries),
+            },
         ) from last_exc
 
     async def _get(self, path: str) -> dict[str, Any]:

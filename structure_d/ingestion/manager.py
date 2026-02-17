@@ -85,9 +85,13 @@ class IngestionManager:
         ext = file_path.suffix.lower()
 
         if ext not in settings.ingestion.supported_extensions:
-            raise ValueError(
-                f"Unsupported file extension {ext!r}. "
-                f"Supported: {settings.ingestion.supported_extensions}"
+            raise ParserError(
+                f"Unsupported file extension {ext!r}",
+                file_path=str(file_path),
+                format=ext,
+                context={
+                    "supported": ", ".join(settings.ingestion.supported_extensions),
+                },
             )
 
         parser = self._resolve_parser(file_path, parser_name)
@@ -140,17 +144,25 @@ class IngestionManager:
         if parser_name:
             parser = self.registry.get(parser_name)
             if parser is None:
-                raise ValueError(
-                    f"Parser {parser_name!r} not found. "
-                    f"Available: {self.registry.list_parsers()}"
+                raise ParserError(
+                    f"Parser {parser_name!r} not found",
+                    parser_name=parser_name,
+                    file_path=str(file_path),
+                    context={
+                        "available": ", ".join(self.registry.list_parsers()),
+                    },
                 )
             return parser
 
         # Auto-select
         parser = self.registry.get_for_file(file_path)
-        if parser is None:
-            raise ValueError(
-                f"No parser registered for {file_path.suffix!r}. "
-                f"Available parsers: {self.registry.list_parsers()}"
-            )
+            if parser is None:
+                raise ParserError(
+                    f"No parser registered for {file_path.suffix!r}",
+                    file_path=str(file_path),
+                    format=file_path.suffix,
+                    context={
+                        "available": ", ".join(self.registry.list_parsers()),
+                    },
+                )
         return parser
