@@ -20,8 +20,12 @@ from structure_d.inference.vllm_client import VLLMClient
 from structure_d.ingestion.manager import IngestionManager
 from structure_d.models.registry import ModelRegistry
 from structure_d.models.router import ModelRouter
+from structure_d.monitoring.metrics import MetricsCollector
 from structure_d.preprocessing.chunker import Chunker
 from structure_d.preprocessing.normalizer import normalize_text
+from structure_d.retrieval.embeddings import EmbeddingService
+from structure_d.retrieval.rag_pipeline import RAGPipeline
+from structure_d.retrieval.vector_store import VectorStoreBase
 from structure_d.schemas.base import (
     DocumentFormat,
     ExtractionResult,
@@ -72,6 +76,8 @@ class Pipeline:
         ingestion_manager: IngestionManager | None = None,
         model_registry: ModelRegistry | None = None,
         vllm_client: VLLMClient | None = None,
+        vector_store: VectorStoreBase | None = None,
+        enable_rag: bool | None = None,
     ) -> None:
         # Load settings
         if config_path:
@@ -111,6 +117,22 @@ class Pipeline:
 
         self.jsonl_writer = JSONLWriter()
         self.csv_writer = CSVWriter()
+        
+        # Metrics collector
+        self.metrics = MetricsCollector()
+        if settings.monitoring.prometheus.enabled:
+            self.metrics.start_server(settings.monitoring.prometheus.port)
+        
+        # RAG pipeline (optional)
+        self.enable_rag = enable_rag if enable_rag is not None else settings.retrieval.enabled
+        self.rag_pipeline: RAGPipeline | None = None
+        if self.enable_rag and vector_store:
+            embedding_service = EmbeddingService()
+            self.rag_pipeline = RAGPipeline(
+                vector_store=vector_store,
+                embedding_service=embedding_service,
+                client=self.client,
+            )
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -142,10 +164,14 @@ class Pipeline:
         t0 = time.monotonic()
         settings = get_settings()
 
-        # 1. Ingest
-        logger.info("pipeline_start", file=str(file_path), format=file_path.suffix)
-        doc = await self.ingestion.ingest(file_path, parser_name=parser_name)
-        source_format = doc.metadata.format
+        # Track active request
+        with self.metrics.track_request():
+            # 1. Ingest
+            logger.info("pipeline_start", file=str(file_path), format=file_path.suffix)
+            ingest_start = time.monotonic()
+            doc = await self.ingestion.ingest(file_path, parser_name=parser_name)
+            self.metrics.record_ingestion(1)
+            source_format = doc.metadata.format
 
         # 2. Pre-process
         text = normalize_text(
@@ -160,6 +186,15 @@ class Pipeline:
             chunk.metadata.source_format = source_format
 
         logger.info("pipeline_chunked", chunks=len(chunks), format=source_format.value)
+        self.metrics.record_chunks(len(chunks))
+        
+        # 2.5. Index chunks for RAG (if enabled)
+        if self.rag_pipeline:
+            try:
+                await self.rag_pipeline.index_chunks(chunks)
+                logger.info("rag_indexed", chunks=len(chunks))
+            except Exception as e:
+                logger.warning("rag_indexing_failed", error=str(e))
 
         # 3. Route
         if model is None:
@@ -180,9 +215,23 @@ class Pipeline:
         validated: list[ExtractionResult] = []
         for result, chunk in zip(results, chunks):
             result.source_format = source_format
+            validate_start = time.monotonic()
             result = await self.retry_handler.validate_and_retry(
                 result, original_text=chunk.text, model=model
             )
+            if not result.is_valid:
+                self.metrics.record_validation_failure(1)
+            
+            # Record token usage
+            if result.token_usage:
+                prompt_tokens = result.token_usage.get("prompt_tokens", 0)
+                completion_tokens = result.token_usage.get("completion_tokens", 0)
+                self.metrics.record_tokens(prompt=prompt_tokens, completion=completion_tokens)
+            
+            # Record inference latency
+            if result.latency_ms:
+                self.metrics.record_inference_latency(result.latency_ms / 1000.0)
+            
             validated.append(result)
 
         # 6. Store
@@ -195,6 +244,10 @@ class Pipeline:
 
         elapsed = (time.monotonic() - t0) * 1000
         valid_count = sum(1 for r in validated if r.is_valid)
+        
+        # Record overall pipeline latency
+        self.metrics.record_inference_latency(elapsed / 1000.0)
+        
         logger.info(
             "pipeline_complete",
             file=str(file_path),
