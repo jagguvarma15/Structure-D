@@ -2,12 +2,38 @@
 
 from __future__ import annotations
 
-LOGO = r"""
-  [bold cyan on black]╔═╗╔╦╗╦═╗╦ ╦╔═╗╔╦╗╦ ╦╦═╗╔═╗[/bold cyan on black]  [bold cyan on black]─[/bold cyan on black]  [bold cyan on black]╔╗[/bold cyan on black]
-  [bold cyan on black]╚═╗ ║ ╠╦╝║ ║║   ║ ║ ║╠╦╝║╣[/bold cyan on black]  [bold cyan on black]─[/bold cyan on black]  [bold cyan on black]║║[/bold cyan on black]
-  [bold cyan on black]╚═╝ ╩ ╩╚═╚═╝╚═╝ ╩ ╚═╝╩╚═╚═╝[/bold cyan on black]  [bold cyan on black]─[/bold cyan on black]  [bold cyan on black]╚╝[/bold cyan on black]"""
+import os
+from dataclasses import dataclass
 
-TAGLINE = "[dim]Unstructured → Structured  ·  Any format, any schema, high-throughput vLLM inference[/dim]"
+from rich import box
+from rich.console import Console
+from rich.panel import Panel
+from rich.text import Text
+from rich.theme import Theme
+
+
+# Role-based styling (easy to retheme / keep accessible)
+THEME = Theme(
+    {
+        "frame": "white",
+        "brand": "bold bright_cyan",
+        "muted": "dim",
+        "accent": "bright_cyan",
+        "ok": "bold green",
+    }
+)
+
+# Pixel wordmark with D appended (6 rows) - compact spacing
+WORDMARK = [
+    " ███████╗████████╗██████╗ ██╗   ██╗ ██████╗████████╗██╗   ██╗██████╗ ███████╗  ███████╗",
+    " ██╔════╝╚══██╔══╝██╔══██╗██║   ██║██╔════╝╚══██╔══╝██║   ██║██╔══██╗██╔════╝  ██╔═══██╗",
+    " ███████╗   ██║   ██████╔╝██║   ██║██║        ██║   ██║   ██║██████╔╝█████╗    ██║   ██║",
+    " ╚════██║   ██║   ██╔══██╗██║   ██║██║        ██║   ██║   ██║██╔══██╗██╔══╝    ██║   ██║",
+    " ███████║   ██║   ██║  ██║╚██████╔╝╚██████╗   ██║   ╚██████╔╝██║  ██║███████╗  ██╚═══██║",
+    " ╚══════╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝  ╚═════╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝╚══════╝  ███████╔╝",
+]
+
+TAGLINE = "Unstructured → Structured  ·  Any format, any schema, high-throughput vLLM inference"
 
 WELCOME = """\
 [bold white]Welcome to Structure-D interactive terminal.[/bold white]
@@ -39,3 +65,50 @@ HELP_TEXT = """\
 [bold green]help[/bold green]                          Show this help message
 [bold green]exit[/bold green] / [bold green]quit[/bold green]                  Exit the terminal
 """
+
+
+@dataclass(frozen=True)
+class BrandInfo:
+    version: str = "CLI v0.1.0"
+    subtitle: str = "Command-line interface"
+
+
+def _no_color_enabled() -> bool:
+    return "NO_COLOR" in os.environ
+
+
+def build_banner(console: Console, brand: BrandInfo = BrandInfo()) -> Panel:
+    # Content: header + wordmark + tagline
+    content = Text()
+    content.append("Welcome to\n", style="muted")
+    
+    # Display wordmark as-is - Rich will handle overflow gracefully
+    for line in WORDMARK:
+        content.append(line + "\n", style="brand")
+    
+    content.append(brand.subtitle + "\n", style="muted")
+    content.append(TAGLINE, style="muted")
+
+    # Panel will automatically fit to terminal width
+    # Rich handles overflow by wrapping or scrolling in narrow terminals
+    return Panel(
+        content,
+        box=box.SQUARE,
+        border_style="frame",
+        padding=(1, 2),
+        title=f"[muted]{brand.version}[/muted]",
+        title_align="right",
+    )
+
+
+def print_banner(console: Console, brand: BrandInfo = BrandInfo()) -> None:
+    if _no_color_enabled():
+        console.print("Welcome to")
+        for line in WORDMARK:
+            console.print(line)
+        console.print(TAGLINE)
+        return
+
+    console.push_theme(THEME)
+    console.print(build_banner(console, brand))
+    console.pop_theme()

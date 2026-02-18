@@ -21,7 +21,7 @@ from rich.panel import Panel
 from rich.text import Text
 
 from structure_d import __version__
-from structure_d.terminal.banner import HELP_TEXT, LOGO, TAGLINE, WELCOME
+from structure_d.terminal.banner import HELP_TEXT, WELCOME, print_banner
 from structure_d.terminal.completer import StructureDCompleter
 
 console = Console()
@@ -63,9 +63,8 @@ class TerminalApp:
     # ── Banner ────────────────────────────────────────────────────────────────
 
     def _show_banner(self) -> None:
-        # Logo already has black background in its markup
-        console.print(LOGO)
-        console.print(f"  [bold white]v{__version__}[/bold white]   {TAGLINE}")
+        """Display the banner with logo and document icon."""
+        print_banner(console)
         console.print()
 
     # ── Initialization ────────────────────────────────────────────────────────
