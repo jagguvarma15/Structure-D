@@ -156,13 +156,13 @@ class IngestionManager:
 
         # Auto-select
         parser = self.registry.get_for_file(file_path)
-            if parser is None:
-                raise ParserError(
-                    f"No parser registered for {file_path.suffix!r}",
-                    file_path=str(file_path),
-                    format=file_path.suffix,
-                    context={
-                        "available": ", ".join(self.registry.list_parsers()),
-                    },
-                )
+        if parser is None:
+            raise ParserError(
+                f"No parser registered for {file_path.suffix!r}",
+                file_path=str(file_path),
+                format=file_path.suffix,
+                context={
+                    "available": ", ".join(self.registry.list_parsers()),
+                },
+            )
         return parser
