@@ -169,8 +169,10 @@ class Pipeline:
             # 1. Ingest
             logger.info("pipeline_start", file=str(file_path), format=file_path.suffix)
             ingest_start = time.monotonic()
-            doc = await self.ingestion.ingest(file_path, parser_name=parser_name)
+            doc: ParsedDocument = await self.ingestion.ingest(file_path, parser_name=parser_name)
+            ingest_elapsed = (time.monotonic() - ingest_start) * 1000
             self.metrics.record_ingestion(1)
+            logger.debug("ingestion_complete", elapsed_ms=round(ingest_elapsed, 1))
             source_format = doc.metadata.format
 
         # 2. Pre-process
@@ -179,7 +181,7 @@ class Pipeline:
             normalize_unicode=settings.preprocessing.normalize_unicode,
             strip_boilerplate=settings.preprocessing.strip_boilerplate,
         )
-        chunks = self.chunker.chunk(text, document_id=doc.metadata.document_id)
+        chunks: list[TextChunk] = self.chunker.chunk(text, document_id=doc.metadata.document_id)
 
         # Propagate format to chunk metadata
         for chunk in chunks:
@@ -219,8 +221,10 @@ class Pipeline:
             result = await self.retry_handler.validate_and_retry(
                 result, original_text=chunk.text, model=model
             )
+            validate_elapsed = (time.monotonic() - validate_start) * 1000
             if not result.is_valid:
                 self.metrics.record_validation_failure(1)
+                logger.debug("validation_failed", elapsed_ms=round(validate_elapsed, 1))
             
             # Record token usage
             if result.token_usage:

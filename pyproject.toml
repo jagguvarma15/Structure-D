@@ -150,6 +150,18 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 
+[tool.basedpyright]
+pythonVersion = "3.10"
+typeCheckingMode = "standard"
+venvPath = "."  # Look for venv in project root
+venv = ".venv"  # Virtual environment directory name
+reportMissingImports = "warning"  # Warn for missing imports (optional deps)
+reportMissingTypeStubs = "none"   # Don't require type stubs for all packages
+reportUnusedImport = "warning"
+reportUnusedClass = "warning"
+reportUnusedFunction = "warning"
+reportUnusedVariable = "warning"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
