@@ -27,8 +27,9 @@ class DatabaseWriter:
         settings = get_settings()
         self.connection_string = connection_string or settings.storage.database.connection_string
         self.table_prefix = table_prefix or settings.storage.database.table_prefix
-        self._engine = None
-        self._table = None
+        self._engine: Any | None = None
+        self._table: Any | None = None
+        self._session_factory: Any | None = None
         self._initialized = False
 
     async def _ensure_engine(self) -> Any:
@@ -37,8 +38,8 @@ class DatabaseWriter:
             return self._engine
         
         try:
-            from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-            from sqlalchemy.orm import sessionmaker
+            from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession  # type: ignore[reportMissingImports]
+            from sqlalchemy.orm import sessionmaker  # type: ignore[reportMissingImports]
         except ImportError as e:
             raise ImportError(
                 "Database storage requires sqlalchemy[asyncio]. "
@@ -65,8 +66,7 @@ class DatabaseWriter:
         await self._ensure_engine()
         
         try:
-            from sqlalchemy import Column, DateTime, Float, Integer, MetaData, String, Table, Text, Boolean
-            from sqlalchemy.ext.asyncio import AsyncSession
+            from sqlalchemy import Column, DateTime, Float, Integer, MetaData, String, Table, Text, Boolean  # type: ignore[reportMissingImports]
         except ImportError as e:
             raise ImportError(
                 "Database storage requires sqlalchemy. "
@@ -93,6 +93,8 @@ class DatabaseWriter:
         )
         
         # Create tables asynchronously
+        if self._engine is None:
+            raise StorageError("Engine not initialized", storage_type="database")
         async with self._engine.begin() as conn:
             await conn.run_sync(metadata.create_all)
         
@@ -123,6 +125,11 @@ class DatabaseWriter:
                 "token_usage": json.dumps(r.token_usage),
                 "created_at": r.created_at,
             })
+        
+        if self._table is None:
+            raise StorageError("Table not initialized", storage_type="database")
+        if self._session_factory is None:
+            raise StorageError("Session factory not initialized", storage_type="database")
         
         try:
             async with self._session_factory() as session:
