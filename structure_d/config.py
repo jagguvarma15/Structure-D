@@ -129,8 +129,40 @@ class BatchConfig(BaseModel):
     flush_interval_seconds: float = 1.0
 
 
-class InferenceConfig(BaseModel):
+class OpenAIProviderConfig(BaseModel):
+    model: str = "gpt-4o"
+    api_key: str | None = None
+    base_url: str | None = None
+
+
+class AnthropicProviderConfig(BaseModel):
+    model: str = "claude-3-5-sonnet-20241022"
+    api_key: str | None = None
+
+
+class GeminiProviderConfig(BaseModel):
+    model: str = "gemini-1.5-pro"
+    api_key: str | None = None
+
+
+class OllamaProviderConfig(BaseModel):
+    base_url: str = "http://localhost:11434"
+    model: str = "llama3.1:8b"
+
+
+class ProviderConfig(BaseModel):
+    """Configuration for LLM providers."""
+
+    provider: Literal["vllm", "openai", "anthropic", "gemini", "ollama"] = "vllm"
     vllm: VLLMConfig = Field(default_factory=VLLMConfig)
+    openai: OpenAIProviderConfig = Field(default_factory=OpenAIProviderConfig)
+    anthropic: AnthropicProviderConfig = Field(default_factory=AnthropicProviderConfig)
+    gemini: GeminiProviderConfig = Field(default_factory=GeminiProviderConfig)
+    ollama: OllamaProviderConfig = Field(default_factory=OllamaProviderConfig)
+
+
+class InferenceConfig(BaseModel):
+    provider: ProviderConfig = Field(default_factory=ProviderConfig)
     batch: BatchConfig = Field(default_factory=BatchConfig)
 
 

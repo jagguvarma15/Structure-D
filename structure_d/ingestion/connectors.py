@@ -1,9 +1,10 @@
-"""Source connectors: local filesystem, S3, GCS, HTTP."""
+"""Source connectors: local filesystem, S3, GCS, Azure, HTTP, SFTP, Google Drive, Dropbox."""
 
 from __future__ import annotations
 
 import abc
 import asyncio
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -123,11 +124,209 @@ class HTTPConnector(BaseConnector):
         return target
 
 
+class GCSConnector(BaseConnector):
+    """Download files from Google Cloud Storage. Requires ``google-cloud-storage``."""
+
+    def __init__(self, bucket: str, prefix: str = "") -> None:
+        self.bucket_name = bucket
+        self.prefix = prefix
+        self._client = None
+
+    def _get_client(self):  # noqa: ANN202
+        if self._client is None:
+            try:
+                from google.cloud import storage  # type: ignore[reportMissingImports]
+
+                self._client = storage.Client()
+            except ImportError as e:
+                raise ImportError(
+                    "google-cloud-storage is required for GCS connector. "
+                    "Install with: pip install google-cloud-storage"
+                ) from e
+        return self._client
+
+    async def list_files(self, prefix: str = "") -> list[str]:
+        loop = asyncio.get_event_loop()
+        client = self._get_client()
+        bucket = client.bucket(self.bucket_name)
+        full_prefix = f"{self.prefix}/{prefix}".strip("/")
+
+        def _list() -> list[str]:
+            blobs = bucket.list_blobs(prefix=full_prefix)
+            return [blob.name for blob in blobs]
+
+        return await loop.run_in_executor(None, _list)
+
+    async def download(self, key: str, dest: Path) -> Path:
+        loop = asyncio.get_event_loop()
+        client = self._get_client()
+        bucket = client.bucket(self.bucket_name)
+        blob = bucket.blob(key)
+        target = dest / Path(key).name
+
+        def _download() -> None:
+            blob.download_to_filename(str(target))
+
+        await loop.run_in_executor(None, _download)
+        return target
+
+
+class AzureConnector(BaseConnector):
+    """Download files from Azure Blob Storage. Requires ``azure-storage-blob``."""
+
+    def __init__(self, account_name: str, container: str, prefix: str = "") -> None:
+        self.account_name = account_name
+        self.container_name = container
+        self.prefix = prefix
+        self._client = None
+
+    def _get_client(self):  # noqa: ANN202
+        if self._client is None:
+            try:
+                from azure.storage.blob import BlobServiceClient  # type: ignore[reportMissingImports]
+
+                account_key = os.getenv("AZURE_STORAGE_ACCOUNT_KEY")
+                connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+
+                if connection_string:
+                    self._client = BlobServiceClient.from_connection_string(connection_string)
+                elif account_key:
+                    account_url = f"https://{self.account_name}.blob.core.windows.net"
+                    self._client = BlobServiceClient(account_url=account_url, credential=account_key)
+                else:
+                    raise ValueError(
+                        "AZURE_STORAGE_ACCOUNT_KEY or AZURE_STORAGE_CONNECTION_STRING must be set"
+                    )
+            except ImportError as e:
+                raise ImportError(
+                    "azure-storage-blob is required for Azure connector. "
+                    "Install with: pip install azure-storage-blob"
+                ) from e
+        return self._client
+
+    async def list_files(self, prefix: str = "") -> list[str]:
+        loop = asyncio.get_event_loop()
+        client = self._get_client()
+        container = client.get_container_client(self.container_name)
+        full_prefix = f"{self.prefix}/{prefix}".strip("/")
+
+        def _list() -> list[str]:
+            blobs = container.list_blobs(name_starts_with=full_prefix)
+            return [blob.name for blob in blobs]
+
+        return await loop.run_in_executor(None, _list)
+
+    async def download(self, key: str, dest: Path) -> Path:
+        loop = asyncio.get_event_loop()
+        client = self._get_client()
+        container = client.get_container_client(self.container_name)
+        blob = container.get_blob_client(key)
+        target = dest / Path(key).name
+
+        def _download() -> None:
+            with open(target, "wb") as f:
+                blob.download_blob().readinto(f)
+
+        await loop.run_in_executor(None, _download)
+        return target
+
+
+class SFTPConnector(BaseConnector):
+    """Download files via SFTP. Requires ``paramiko``."""
+
+    def __init__(
+        self,
+        host: str,
+        username: str,
+        password: str | None = None,
+        key_file: str | None = None,
+        port: int = 22,
+        base_path: str = "/",
+    ) -> None:
+        self.host = host
+        self.username = username
+        self.password = password
+        self.key_file = key_file
+        self.port = port
+        self.base_path = base_path
+        self._client = None
+
+    def _get_client(self):  # noqa: ANN202
+        if self._client is None:
+            try:
+                import paramiko  # type: ignore[reportMissingImports]
+
+                transport = paramiko.Transport((self.host, self.port))
+                if self.key_file:
+                    key = paramiko.RSAKey.from_private_key_file(self.key_file)
+                    transport.connect(username=self.username, pkey=key)
+                else:
+                    transport.connect(username=self.username, password=self.password)
+                self._client = paramiko.SFTPClient.from_transport(transport)
+            except ImportError as e:
+                raise ImportError(
+                    "paramiko is required for SFTP connector. Install with: pip install paramiko"
+                ) from e
+        return self._client
+
+    async def list_files(self, prefix: str = "") -> list[str]:
+        loop = asyncio.get_event_loop()
+        client = self._get_client()
+        full_path = f"{self.base_path}/{prefix}".strip("/")
+
+        def _list() -> list[str]:
+            files: list[str] = []
+            try:
+                items = client.listdir_attr(full_path)
+                for item in items:
+                    if item.st_mode & 0o100000:  # Regular file
+                        files.append(f"{full_path}/{item.filename}".strip("/"))
+                    elif item.st_mode & 0o040000:  # Directory
+                        # Recursively list subdirectories
+                        sub_files = self._list_recursive(client, f"{full_path}/{item.filename}")
+                        files.extend(sub_files)
+            except FileNotFoundError:
+                pass
+            return files
+
+        return await loop.run_in_executor(None, _list)
+
+    def _list_recursive(self, client, path: str) -> list[str]:  # noqa: ANN001
+        """Recursively list files in a directory."""
+        files: list[str] = []
+        try:
+            items = client.listdir_attr(path)
+            for item in items:
+                full_path = f"{path}/{item.filename}".strip("/")
+                if item.st_mode & 0o100000:  # Regular file
+                    files.append(full_path)
+                elif item.st_mode & 0o040000:  # Directory
+                    sub_files = self._list_recursive(client, full_path)
+                    files.extend(sub_files)
+        except (FileNotFoundError, PermissionError):
+            pass
+        return files
+
+    async def download(self, key: str, dest: Path) -> Path:
+        loop = asyncio.get_event_loop()
+        client = self._get_client()
+        target = dest / Path(key).name
+
+        def _download() -> None:
+            client.get(key, str(target))
+
+        await loop.run_in_executor(None, _download)
+        return target
+
+
 # ── Factory ───────────────────────────────────────────────────────────────────
 
 _CONNECTORS: dict[str, type[BaseConnector]] = {
     "local": LocalConnector,
     "s3": S3Connector,
+    "gcs": GCSConnector,
+    "azure": AzureConnector,
+    "sftp": SFTPConnector,
     "http": HTTPConnector,
 }
 

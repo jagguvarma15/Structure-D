@@ -29,8 +29,8 @@ class EmbeddingService:
         settings = get_settings()
         self.model_name = model_name or settings.models.embedding_model
         self.use_api = use_api
-        self.api_base = api_base or settings.inference.vllm.api_base
-        self.api_key = api_key or settings.inference.vllm.api_key
+        self.api_base = api_base or settings.inference.provider.vllm.api_base
+        self.api_key = api_key or settings.inference.provider.vllm.api_key
         self._local_model = None
 
     # ── Public API ────────────────────────────────────────────────────────────

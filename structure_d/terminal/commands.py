@@ -190,7 +190,7 @@ async def cmd_status() -> None:
     from structure_d.models.registry import ModelRegistry
 
     settings = get_settings()
-    vllm_url = settings.inference.vllm.api_base
+    vllm_url = settings.inference.provider.vllm.api_base
     config_path = "configs/default.yaml"
 
     # Check vLLM

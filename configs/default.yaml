@@ -57,17 +57,32 @@ models:
   default_model: "meta-llama/Llama-3.1-8B-Instruct"
   embedding_model: "intfloat/e5-large-v2"
 
-# ── vLLM Inference ───────────────────────────────────────────
+# ── LLM Inference ───────────────────────────────────────────
 inference:
-  vllm:
-    api_base: "http://localhost:8000/v1"
-    api_key: "EMPTY"            # vLLM uses a dummy key by default
-    gpu_memory_utilization: 0.90
-    max_model_len: 8192
-    max_num_seqs: 256
-    structured_output_backend: "auto"   # auto | xgrammar | guidance | outlines
-    timeout_seconds: 120
-    max_retries: 3
+  provider:
+    provider: "vllm"             # vllm | openai | anthropic | gemini | ollama
+    vllm:
+      api_base: "http://localhost:8000/v1"
+      api_key: "EMPTY"            # vLLM uses a dummy key by default
+      gpu_memory_utilization: 0.90
+      max_model_len: 8192
+      max_num_seqs: 256
+      structured_output_backend: "auto"   # auto | xgrammar | guidance | outlines
+      timeout_seconds: 120
+      max_retries: 3
+    openai:
+      model: "gpt-4o"
+      api_key: null                # Set via OPENAI_API_KEY env var
+      base_url: null                # Optional custom base URL
+    anthropic:
+      model: "claude-3-5-sonnet-20241022"
+      api_key: null                # Set via ANTHROPIC_API_KEY env var
+    gemini:
+      model: "gemini-1.5-pro"
+      api_key: null                # Set via GOOGLE_API_KEY env var
+    ollama:
+      base_url: "http://localhost:11434"
+      model: "llama3.1:8b"
   batch:
     max_batch_size: 32
     flush_interval_seconds: 1.0

@@ -24,7 +24,8 @@ from structure_d import __version__
 from structure_d.terminal.banner import HELP_TEXT, WELCOME, print_banner
 from structure_d.terminal.completer import StructureDCompleter
 
-console = Console()
+# Create console with automatic size detection
+console = Console(force_terminal=None, width=None, height=None)
 
 # Prompt style
 _PROMPT_STYLE = Style.from_dict({
@@ -112,7 +113,7 @@ class TerminalApp:
             f"  [green]✓[/green] Models registered    [dim]({n_models} models)[/dim]\n"
             f"  [green]✓[/green] Schemas available    [dim]({n_schemas} built-in)[/dim]\n"
             f"  [green]✓[/green] Formats supported    [dim]({n_formats} types)[/dim]\n"
-            f"  [green]✓[/green] vLLM endpoint        [dim]({settings.inference.vllm.api_base})[/dim]"
+            f"  [green]✓[/green] vLLM endpoint        [dim]({settings.inference.provider.vllm.api_base})[/dim]"
         )
         console.print(Panel(summary, title="[bold green]System Ready[/bold green]", border_style="green", padding=(0, 1)))
         console.print()
@@ -138,7 +139,7 @@ class TerminalApp:
     def _init_vllm() -> None:
         # Non-blocking check; we just validate the URL is configured
         from structure_d.config import get_settings
-        get_settings().inference.vllm.api_base
+        get_settings().inference.provider.vllm.api_base
 
     # ── REPL ──────────────────────────────────────────────────────────────────
 

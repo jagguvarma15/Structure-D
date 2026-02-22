@@ -41,10 +41,10 @@ class VLLMClient:
         max_retries: int | None = None,
     ) -> None:
         settings = get_settings()
-        self.api_base = (api_base or settings.inference.vllm.api_base).rstrip("/")
-        self.api_key = api_key or settings.inference.vllm.api_key
-        self.timeout = timeout or settings.inference.vllm.timeout_seconds
-        self.max_retries = max_retries or settings.inference.vllm.max_retries
+        self.api_base = (api_base or settings.inference.provider.vllm.api_base).rstrip("/")
+        self.api_key = api_key or settings.inference.provider.vllm.api_key
+        self.timeout = timeout or settings.inference.provider.vllm.timeout_seconds
+        self.max_retries = max_retries or settings.inference.provider.vllm.max_retries
 
     # ── Public API ────────────────────────────────────────────────────────────
 
