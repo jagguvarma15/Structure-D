@@ -41,9 +41,12 @@ async def main(file_path: str) -> None:
     for r in results:
         status = "✓ VALID" if r.is_valid else "✗ INVALID"
         print(f"\n[{status}] Chunk: {r.chunk_id} | Format: {r.source_format.value}")
-        if r.is_valid:
+        if r.is_valid and isinstance(r.structured_output, dict):
             for ent in r.structured_output.get("entities", []):
-                print(f"    [{ent.get('label', '?')}] {ent.get('text', '')}")
+                # ent may be a dict (from JSON) or an Entity-like object
+                label = ent.get("label", "?") if isinstance(ent, dict) else getattr(ent, "label", "?")
+                text = ent.get("text", "") if isinstance(ent, dict) else getattr(ent, "text", "")
+                print(f"    [{label}] {text}")
         else:
             print(f"  Errors: {r.validation_errors}")
 
