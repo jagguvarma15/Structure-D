@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import abc
+import asyncio
 import os
 from typing import Any
 
@@ -64,7 +65,7 @@ class SnowflakeWriter(BaseDestination):
         self.schema = schema or os.getenv("SNOWFLAKE_SCHEMA", "PUBLIC")
         self._connection = None
 
-    def _get_connection(self):  # noqa: ANN202
+    def _get_connection(self) -> Any:
         if self._connection is None:
             try:
                 import snowflake.connector  # type: ignore[reportMissingImports]
@@ -87,8 +88,6 @@ class SnowflakeWriter(BaseDestination):
     async def create_table_if_not_exists(
         self, table: str, columns: dict[str, str], schema: str | None = None
     ) -> None:
-        import asyncio
-
         conn = self._get_connection()
         schema_name = schema or self.schema
         full_table = f"{schema_name}.{table}" if schema_name else table
@@ -115,8 +114,6 @@ class SnowflakeWriter(BaseDestination):
         await asyncio.get_event_loop().run_in_executor(None, _execute)
 
     async def write(self, data: list[dict[str, Any]], table: str, schema: str | None = None) -> int:
-        import asyncio
-
         if not data:
             return 0
 
@@ -164,7 +161,13 @@ class BigQueryWriter(BaseDestination):
     async def create_table_if_not_exists(
         self, table: str, columns: dict[str, str], schema: str | None = None
     ) -> None:
-        import asyncio
+        try:
+            from google.cloud import bigquery  # type: ignore[reportMissingImports]
+        except ImportError as e:
+            raise ImportError(
+                "google-cloud-bigquery is required for BigQuery. "
+                "Install with: pip install google-cloud-bigquery"
+            ) from e
 
         client = self._get_client()
         dataset_name = schema or self.dataset
@@ -191,8 +194,6 @@ class BigQueryWriter(BaseDestination):
         await asyncio.get_event_loop().run_in_executor(None, _create)
 
     async def write(self, data: list[dict[str, Any]], table: str, schema: str | None = None) -> int:
-        import asyncio
-
         if not data:
             return 0
 
