@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Any, Type
+from typing import Any, Literal, Type
 
 import structlog
 from pydantic import BaseModel
@@ -134,7 +134,57 @@ class Pipeline:
                 client=self.client,
             )
 
+        # Index (built on demand via build_index)
+        self._vector_store = vector_store
+        self._embedding_service = EmbeddingService() if (vector_store or enable_rag) else None
+
     # ── Public API ────────────────────────────────────────────────────────────
+
+    async def build_index(
+        self,
+        file_path: Path,
+        index_type: Literal["vector", "summary"] = "vector",
+        *,
+        vector_store: VectorStoreBase | None = None,
+        parser_name: str | None = None,
+    ) -> Any:
+        """
+        Load file, chunk into nodes, and build an index.
+
+        Returns a :class:`VectorStoreIndex` or :class:`SummaryIndex` with nodes
+        inserted. Use :meth:`index.as_query_engine(llm_client=self.client)` for RAG.
+
+        Parameters
+        ----------
+        file_path
+            Path to the file to index.
+        index_type
+            ``"vector"`` (embed + vector store) or ``"summary"`` (in-memory list).
+        vector_store
+            Required for ``index_type="vector"`` unless the pipeline was created
+            with a vector_store (e.g. RAG enabled).
+        parser_name
+            Override parser (default: auto-detect from extension).
+        """
+        from structure_d.indexing import DocumentReader, SummaryIndex, VectorStoreIndex
+
+        reader = DocumentReader(ingestion_manager=self.ingestion, chunker=self.chunker)
+        nodes = await reader.load_and_chunk(file_path, parser_name=parser_name)
+        if not nodes:
+            logger.warning("build_index_no_nodes", path=str(file_path))
+        if index_type == "summary":
+            index = SummaryIndex(nodes=nodes)
+            return index
+        store = vector_store or self._vector_store
+        if store is None:
+            raise ValueError(
+                "vector_store is required for index_type='vector'. "
+                "Pass vector_store to Pipeline() or to build_index()."
+            )
+        emb = self._embedding_service or EmbeddingService()
+        index = VectorStoreIndex(vector_store=store, embedding_service=emb)
+        await index.insert_nodes(nodes)
+        return index
 
     async def run(
         self,
