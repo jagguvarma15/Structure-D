@@ -180,6 +180,45 @@ inference:
    - Support versioned templates with Jinja2
    - Add CLI commands for template management
 
+### Indexing (Documents, Nodes, Index, QueryEngine)
+
+**Location:** `structure_d/indexing/`
+
+**Concepts:**
+- **Document** – Generic container for any source (from `ParsedDocument` or raw text + metadata).
+- **Node** – Chunk of a document with `document_id` and metadata; built from `TextChunk`.
+- **BaseIndex** – Stores nodes and exposes `as_retriever()` and `as_query_engine()`.
+- **VectorStoreIndex** – Embed nodes and retrieve by similarity (uses existing `VectorStoreBase` + `EmbeddingService`).
+- **SummaryIndex** – In-memory list of nodes; no embeddings; good for small corpora.
+- **QueryEngine** – Retriever + response synthesis (simple or compact context).
+- **DocumentReader** – Load paths/directories → Documents; `load_and_chunk()` → Nodes for indexing.
+
+**Usage:**
+```python
+from structure_d.indexing import DocumentReader, VectorStoreIndex, QueryEngine
+from structure_d.retrieval.vector_store import ChromaVectorStore
+from structure_d.retrieval.embeddings import EmbeddingService
+
+reader = DocumentReader()
+nodes = await reader.load_and_chunk(Path("doc.pdf"))
+index = VectorStoreIndex(vector_store=ChromaVectorStore(), embedding_service=EmbeddingService())
+await index.insert_nodes(nodes)
+engine = index.as_query_engine(llm_client=client)
+answer = await engine.query("What is the total amount?", model="llama-3.1-8b")
+```
+
+**Pipeline integration:**
+```python
+pipeline = Pipeline(schema_cls=MySchema, vector_store=ChromaVectorStore())
+index = await pipeline.build_index(Path("doc.pdf"), index_type="vector")
+engine = index.as_query_engine(llm_client=pipeline.client)
+answer = await engine.query("Your question?", model="...")
+```
+
+**Optimization:** `RAGPipeline` now delegates to `VectorStoreIndex` and `QueryEngine`, so indexing and RAG use a single implementation.
+
+**Example:** `examples/llama_index_style_rag.py` — vector or summary index from a file, then query.
+
 ## References
 
 - [Unstract Documentation](https://docs.unstract.com/unstract/)

@@ -1,5 +1,5 @@
 """
-LlamaIndex-inspired indexing: Documents, Nodes, Indexes, QueryEngine.
+Indexing: Documents, Nodes, Indexes, QueryEngine.
 
 Data flow: load (Reader) → Documents → transform to Nodes → Index → Retriever → QueryEngine.
 """

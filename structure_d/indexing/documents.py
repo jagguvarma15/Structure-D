@@ -1,5 +1,5 @@
 """
-Document and Node abstractions (LlamaIndex-inspired).
+Document and Node abstractions.
 
 Documents are generic containers for any data source; Nodes represent chunks
 of source Documents with inherited and chunk-level metadata.
@@ -19,7 +19,7 @@ class Document(BaseModel):
     """
     Generic document container for any data source.
 
-    Maps to LlamaIndex's Document: raw content + metadata. Can be built from
+    Raw content + metadata. Can be built from
     :class:`ParsedDocument` or from raw text + metadata.
     """
 
@@ -42,7 +42,7 @@ class Document(BaseModel):
 
 class Node(BaseModel):
     """
-    A chunk of a source Document with metadata (LlamaIndex-style Node).
+    A chunk of a source Document with metadata.
 
     Used by indexes for retrieval and by query engines for context.
     """
@@ -65,7 +65,7 @@ class Node(BaseModel):
         )
 
     def to_retrieval_result(self, score: float | None = None) -> dict[str, Any]:
-        """Convert to retrieval result dict (document, metadata, score)."""
+        """Convert to retrieval result dict (document, metadata, distance)."""
         out: dict[str, Any] = {
             "id": self.id,
             "document": self.text,
@@ -73,4 +73,6 @@ class Node(BaseModel):
         }
         if score is not None:
             out["distance"] = 1.0 - score if score <= 1.0 else score
+        elif self.extra.get("distance") is not None:
+            out["distance"] = self.extra["distance"]
         return out
