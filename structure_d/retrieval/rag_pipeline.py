@@ -1,4 +1,9 @@
-"""Retrieval-Augmented Generation pipeline."""
+"""
+Retrieval-Augmented Generation pipeline.
+
+Delegates to the indexing layer (VectorStoreIndex + QueryEngine)
+for a single implementation and consistent behaviour.
+"""
 
 from __future__ import annotations
 
@@ -14,22 +19,18 @@ from structure_d.schemas.base import TextChunk
 
 logger = structlog.get_logger(__name__)
 
-_RAG_SYSTEM_PROMPT = """\
-You are a helpful assistant. Use the context below to answer the user's question.
-If the answer is not in the context, say so.
-
-## Context
-{context}
-"""
-
 
 class RAGPipeline:
     """
     End-to-end RAG: embed query → retrieve → compose prompt → generate.
 
+    Uses :class:`structure_d.indexing.VectorStoreIndex` and
+    :class:`structure_d.indexing.QueryEngine` under the hood.
+
     Usage::
 
         rag = RAGPipeline(vector_store=my_store, embedding_service=my_emb)
+        await rag.index_chunks(chunks)
         answer = await rag.query("What is the total amount?", model="llama-3.1-8b")
     """
 
@@ -47,29 +48,29 @@ class RAGPipeline:
         self.client = client or VLLMClient()
         self.top_k = top_k or settings.retrieval.top_k
         self.similarity_threshold = similarity_threshold or settings.retrieval.similarity_threshold
+        self._index: Any = None
+
+    def _get_index(self) -> Any:
+        """Lazy-build vector index for indexing/retrieval."""
+        if self._index is None:
+            from structure_d.indexing import VectorStoreIndex
+
+            self._index = VectorStoreIndex(
+                vector_store=self.vector_store,
+                embedding_service=self.embedding_service,
+                similarity_threshold=self.similarity_threshold,
+            )
+        return self._index
 
     # ── Indexing ──────────────────────────────────────────────────────────────
 
     async def index_chunks(self, chunks: list[TextChunk]) -> None:
-        """Embed and store chunks in the vector store."""
-        texts = [c.text for c in chunks]
-        ids = [c.metadata.chunk_id for c in chunks]
-        metadatas = [
-            {
-                "document_id": c.metadata.document_id,
-                "heading": c.metadata.heading or "",
-                "page_number": c.metadata.page_number or 0,
-            }
-            for c in chunks
-        ]
+        """Embed and store chunks in the vector store (via VectorStoreIndex)."""
+        from structure_d.indexing.documents import Node
 
-        embeddings = await self.embedding_service.embed(texts)
-        await self.vector_store.add(
-            ids=ids,
-            embeddings=embeddings,
-            documents=texts,
-            metadatas=metadatas,
-        )
+        nodes = [Node.from_text_chunk(c) for c in chunks]
+        index = self._get_index()
+        await index.insert_nodes(nodes)
         logger.info("rag_indexed", count=len(chunks))
 
     # ── Querying ──────────────────────────────────────────────────────────────
@@ -80,20 +81,14 @@ class RAGPipeline:
         top_k: int | None = None,
         filter_metadata: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        """Embed *query* and retrieve relevant chunks."""
-        embedding = await self.embedding_service.embed_one(query)
-        results = await self.vector_store.query(
-            embedding=embedding,
+        """Embed *query* and retrieve relevant chunks (returns list of dicts for compatibility)."""
+        index = self._get_index()
+        retriever = index.as_retriever(
             top_k=top_k or self.top_k,
-            filter_metadata=filter_metadata,
+            similarity_threshold=self.similarity_threshold,
         )
-        # Filter by similarity threshold
-        if self.similarity_threshold:
-            results = [
-                r for r in results
-                if r.get("distance") is None or r["distance"] <= (1 - self.similarity_threshold)
-            ]
-        return results
+        nodes = await retriever.retrieve(query, top_k=top_k or self.top_k, filter_metadata=filter_metadata)
+        return [n.to_retrieval_result() for n in nodes]
 
     async def query(
         self,
@@ -105,25 +100,21 @@ class RAGPipeline:
         max_tokens: int = 2048,
         system_prompt: str | None = None,
     ) -> str:
-        """Full RAG: retrieve context, compose prompt, generate answer."""
-        retrieved = await self.retrieve(question, top_k=top_k)
+        """Full RAG: retrieve context, compose prompt, generate answer (via QueryEngine)."""
+        index = self._get_index()
+        retriever = index.as_retriever(top_k=top_k or self.top_k)
+        from structure_d.indexing import QueryEngine
 
-        context = "\n\n---\n\n".join(
-            r.get("document", "") for r in retrieved
+        engine = QueryEngine(
+            retriever=retriever,
+            llm_client=self.client,
+            response_mode="simple",
+            top_k=top_k or self.top_k,
+            system_prompt=system_prompt,
         )
-        sys_prompt = (system_prompt or _RAG_SYSTEM_PROMPT).format(context=context)
-
-        messages = [
-            {"role": "system", "content": sys_prompt},
-            {"role": "user", "content": question},
-        ]
-
-        response = await self.client.chat(
+        return await engine.query(
+            question,
             model=model,
-            messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
         )
-
-        choices = response.get("choices", [])
-        return choices[0].get("message", {}).get("content", "") if choices else ""
