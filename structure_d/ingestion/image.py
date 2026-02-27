@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 from pathlib import Path
+from typing import Any
 
 import structlog
 
@@ -65,7 +66,7 @@ class EasyOCRImageParser(BaseParser):
         self.languages = languages or ["en"]
         self._reader = None
 
-    def _get_reader(self):  # noqa: ANN202
+    def _get_reader(self) -> Any:
         if self._reader is None:
             import easyocr
 

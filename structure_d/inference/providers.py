@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import abc
+import json
 from typing import Any, Type
 
 from pydantic import BaseModel
@@ -75,9 +76,6 @@ class OpenAIProvider(BaseLLMProvider):
 
         client = OpenAI(api_key=self.api_key, base_url=self.base_url)
 
-        # Convert Pydantic schema to JSON Schema
-        json_schema = schema.model_json_schema()
-
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -135,9 +133,7 @@ class AnthropicProvider(BaseLLMProvider):
 
         client = anthropic.AsyncAnthropic(api_key=self.api_key)
 
-        # Convert Pydantic schema to JSON Schema
         json_schema = schema.model_json_schema()
-
         system = system_prompt or "You are a helpful assistant that returns structured JSON."
 
         try:
@@ -150,9 +146,6 @@ class AnthropicProvider(BaseLLMProvider):
                 response_format={"type": "json_schema", "json_schema": json_schema},
                 **kwargs,
             )
-
-            # Parse JSON from response
-            import json
 
             content = response.content[0].text
             data = json.loads(content)
@@ -196,9 +189,7 @@ class GeminiProvider(BaseLLMProvider):
 
         genai.configure(api_key=self.api_key)
 
-        # Convert Pydantic schema to JSON Schema
         json_schema = schema.model_json_schema()
-
         full_prompt = prompt
         if system_prompt:
             full_prompt = f"{system_prompt}\n\n{prompt}"
@@ -215,8 +206,6 @@ class GeminiProvider(BaseLLMProvider):
             )
 
             response = await model.generate_content_async(full_prompt)
-            import json
-
             data = json.loads(response.text)
             return schema.model_validate(data)
         except Exception as e:
@@ -248,14 +237,11 @@ class OllamaProvider(BaseLLMProvider):
         except ImportError:
             raise ImportError("httpx is required for Ollama provider") from None
 
-        # Convert Pydantic schema to JSON Schema
         json_schema = schema.model_json_schema()
-
         full_prompt = prompt
         if system_prompt:
             full_prompt = f"{system_prompt}\n\n{prompt}"
 
-        # Add JSON schema instruction
         schema_instruction = f"\n\nReturn a valid JSON object matching this schema: {json_schema}"
 
         async with httpx.AsyncClient() as client:
@@ -275,8 +261,6 @@ class OllamaProvider(BaseLLMProvider):
                 )
                 response.raise_for_status()
                 result = response.json()
-                import json
-
                 data = json.loads(result["response"])
                 return schema.model_validate(data)
             except Exception as e:
@@ -311,9 +295,7 @@ class VLLMProvider(BaseLLMProvider):
         settings = get_settings()
         model = self.model or kwargs.get("model") or settings.models.default_model
 
-        # Convert Pydantic schema to JSON Schema
         json_schema = schema.model_json_schema()
-
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -330,8 +312,6 @@ class VLLMProvider(BaseLLMProvider):
 
         # Extract content from response
         content = response["choices"][0]["message"]["content"]
-        import json
-
         data = json.loads(content)
         return schema.model_validate(data)
 
