@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import io
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +22,7 @@ class PyMuPDFParser(BaseParser):
     async def parse(self, file_path: Path, **kwargs: object) -> ParsedDocument:
         import fitz  # PyMuPDF
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._parse_sync, file_path)
 
     def _parse_sync(self, file_path: Path) -> ParsedDocument:
@@ -60,7 +59,7 @@ class PDFPlumberParser(BaseParser):
     supported_extensions = [".pdf"]
 
     async def parse(self, file_path: Path, **kwargs: object) -> ParsedDocument:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._parse_sync, file_path)
 
     def _parse_sync(self, file_path: Path) -> ParsedDocument:
@@ -108,7 +107,7 @@ class OCRPDFParser(BaseParser):
         self.dpi = dpi
 
     async def parse(self, file_path: Path, **kwargs: object) -> ParsedDocument:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._parse_sync, file_path)
 
     def _parse_sync(self, file_path: Path) -> ParsedDocument:

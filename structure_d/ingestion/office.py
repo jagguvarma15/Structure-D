@@ -20,7 +20,7 @@ class DocxParser(BaseParser):
     supported_extensions = [".docx"]
 
     async def parse(self, file_path: Path, **kwargs: object) -> ParsedDocument:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._parse_sync, file_path)
 
     def _parse_sync(self, file_path: Path) -> ParsedDocument:
@@ -46,7 +46,7 @@ class XlsxParser(BaseParser):
     supported_extensions = [".xlsx"]
 
     async def parse(self, file_path: Path, **kwargs: object) -> ParsedDocument:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._parse_sync, file_path)
 
     def _parse_sync(self, file_path: Path) -> ParsedDocument:
@@ -85,7 +85,7 @@ class PptxParser(BaseParser):
     supported_extensions = [".pptx"]
 
     async def parse(self, file_path: Path, **kwargs: object) -> ParsedDocument:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._parse_sync, file_path)
 
     def _parse_sync(self, file_path: Path) -> ParsedDocument:

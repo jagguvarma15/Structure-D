@@ -53,7 +53,7 @@ class LocalConnector(BaseConnector):
         if not src.exists():
             raise FileNotFoundError(f"File not found: {src}")
         target = dest / src.name
-        await asyncio.get_event_loop().run_in_executor(
+        await asyncio.get_running_loop().run_in_executor(
             None, shutil.copy2, str(src), str(target)
         )
         return target
@@ -76,9 +76,7 @@ class S3Connector(BaseConnector):
         return self._client
 
     async def list_files(self, prefix: str = "") -> list[str]:
-        import boto3
-
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         s3 = self._get_client()
         full_prefix = f"{self.prefix}/{prefix}".strip("/")
 
@@ -93,7 +91,7 @@ class S3Connector(BaseConnector):
         return await loop.run_in_executor(None, _list)
 
     async def download(self, key: str, dest: Path) -> Path:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         s3 = self._get_client()
         target = dest / Path(key).name
 
@@ -146,7 +144,7 @@ class GCSConnector(BaseConnector):
         return self._client
 
     async def list_files(self, prefix: str = "") -> list[str]:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         client = self._get_client()
         bucket = client.bucket(self.bucket_name)
         full_prefix = f"{self.prefix}/{prefix}".strip("/")
@@ -158,7 +156,7 @@ class GCSConnector(BaseConnector):
         return await loop.run_in_executor(None, _list)
 
     async def download(self, key: str, dest: Path) -> Path:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         client = self._get_client()
         bucket = client.bucket(self.bucket_name)
         blob = bucket.blob(key)
@@ -205,7 +203,7 @@ class AzureConnector(BaseConnector):
         return self._client
 
     async def list_files(self, prefix: str = "") -> list[str]:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         client = self._get_client()
         container = client.get_container_client(self.container_name)
         full_prefix = f"{self.prefix}/{prefix}".strip("/")
@@ -217,7 +215,7 @@ class AzureConnector(BaseConnector):
         return await loop.run_in_executor(None, _list)
 
     async def download(self, key: str, dest: Path) -> Path:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         client = self._get_client()
         container = client.get_container_client(self.container_name)
         blob = container.get_blob_client(key)
@@ -270,7 +268,7 @@ class SFTPConnector(BaseConnector):
         return self._client
 
     async def list_files(self, prefix: str = "") -> list[str]:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         client = self._get_client()
         full_path = f"{self.base_path}/{prefix}".strip("/")
 
@@ -308,7 +306,7 @@ class SFTPConnector(BaseConnector):
         return files
 
     async def download(self, key: str, dest: Path) -> Path:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         client = self._get_client()
         target = dest / Path(key).name
 

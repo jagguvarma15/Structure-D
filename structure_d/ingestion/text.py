@@ -15,7 +15,7 @@ class PlainTextParser(BaseParser):
     supported_extensions = [".txt", ".md", ".csv"]
 
     async def parse(self, file_path: Path, **kwargs: object) -> ParsedDocument:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._parse_sync, file_path)
 
     def _parse_sync(self, file_path: Path) -> ParsedDocument:
