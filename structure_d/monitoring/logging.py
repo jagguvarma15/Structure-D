@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import logging.handlers
 import sys
 from pathlib import Path
 
@@ -61,6 +62,3 @@ def setup_logging(log_level: str | None = None, log_format: str | None = None) -
             backupCount=log_cfg.backup_count,
         )
         logging.getLogger().addHandler(fh)
-
-
-import logging.handlers  # noqa: E402  (needed for RotatingFileHandler)

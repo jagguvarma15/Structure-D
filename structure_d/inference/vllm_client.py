@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import Any
 
@@ -166,14 +167,12 @@ class VLLMClient:
                     wait=wait,
                     error=str(exc),
                 )
-                import asyncio
-
                 await asyncio.sleep(wait)
 
         raise InferenceError(
             f"vLLM request failed after {self.max_retries} retries",
-            model=model if isinstance(model, str) else None,
-            status_code=getattr(last_exc, "status_code", None) if hasattr(last_exc, "status_code") else None,
+            model=body.get("model"),
+            status_code=getattr(last_exc, "status_code", None),
             response_body=str(last_exc) if last_exc else None,
             context={
                 "api_base": self.api_base,

@@ -6,9 +6,8 @@ import abc
 import asyncio
 import os
 import shutil
-import tempfile
 from pathlib import Path
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 import structlog
 
@@ -68,7 +67,7 @@ class S3Connector(BaseConnector):
         self.prefix = prefix
         self._client = None
 
-    def _get_client(self):  # noqa: ANN202
+    def _get_client(self) -> Any:
         if self._client is None:
             import boto3
 
@@ -130,7 +129,7 @@ class GCSConnector(BaseConnector):
         self.prefix = prefix
         self._client = None
 
-    def _get_client(self):  # noqa: ANN202
+    def _get_client(self) -> Any:
         if self._client is None:
             try:
                 from google.cloud import storage  # type: ignore[reportMissingImports]
@@ -178,7 +177,7 @@ class AzureConnector(BaseConnector):
         self.prefix = prefix
         self._client = None
 
-    def _get_client(self):  # noqa: ANN202
+    def _get_client(self) -> Any:
         if self._client is None:
             try:
                 from azure.storage.blob import BlobServiceClient  # type: ignore[reportMissingImports]
@@ -249,7 +248,7 @@ class SFTPConnector(BaseConnector):
         self.base_path = base_path
         self._client = None
 
-    def _get_client(self):  # noqa: ANN202
+    def _get_client(self) -> Any:
         if self._client is None:
             try:
                 import paramiko  # type: ignore[reportMissingImports]
@@ -289,7 +288,7 @@ class SFTPConnector(BaseConnector):
 
         return await loop.run_in_executor(None, _list)
 
-    def _list_recursive(self, client, path: str) -> list[str]:  # noqa: ANN001
+    def _list_recursive(self, client: Any, path: str) -> list[str]:
         """Recursively list files in a directory."""
         files: list[str] = []
         try:

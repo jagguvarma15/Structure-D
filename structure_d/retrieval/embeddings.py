@@ -62,7 +62,7 @@ class EmbeddingService:
 
     async def _embed_local(self, texts: list[str]) -> list[list[float]]:
         model = self._load_local()
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         embeddings = await loop.run_in_executor(
             None, lambda: model.encode(texts, normalize_embeddings=True).tolist()
         )

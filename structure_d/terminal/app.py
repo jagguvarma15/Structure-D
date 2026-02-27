@@ -157,7 +157,7 @@ class TerminalApp:
 
         while True:
             try:
-                raw = await asyncio.get_event_loop().run_in_executor(
+                raw = await asyncio.get_running_loop().run_in_executor(
                     None,
                     lambda: self.session.prompt(_prompt_message()),
                 )

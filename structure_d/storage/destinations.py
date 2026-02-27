@@ -111,7 +111,7 @@ class SnowflakeWriter(BaseDestination):
             cursor.execute(sql)
             cursor.close()
 
-        await asyncio.get_event_loop().run_in_executor(None, _execute)
+        await asyncio.get_running_loop().run_in_executor(None, _execute)
 
     async def write(self, data: list[dict[str, Any]], table: str, schema: str | None = None) -> int:
         if not data:
@@ -134,7 +134,7 @@ class SnowflakeWriter(BaseDestination):
             cursor.close()
             return len(rows)
 
-        return await asyncio.get_event_loop().run_in_executor(None, _write)
+        return await asyncio.get_running_loop().run_in_executor(None, _write)
 
 
 class BigQueryWriter(BaseDestination):
@@ -145,7 +145,7 @@ class BigQueryWriter(BaseDestination):
         self.dataset = dataset or os.getenv("BIGQUERY_DATASET")
         self._client = None
 
-    def _get_client(self):  # noqa: ANN202
+    def _get_client(self) -> Any:
         if self._client is None:
             try:
                 from google.cloud import bigquery  # type: ignore[reportMissingImports]
@@ -191,7 +191,7 @@ class BigQueryWriter(BaseDestination):
             table_obj = bigquery.Table(table_id, schema=schema_fields)
             client.create_table(table_obj, exists_ok=True)
 
-        await asyncio.get_event_loop().run_in_executor(None, _create)
+        await asyncio.get_running_loop().run_in_executor(None, _create)
 
     async def write(self, data: list[dict[str, Any]], table: str, schema: str | None = None) -> int:
         if not data:
@@ -207,7 +207,7 @@ class BigQueryWriter(BaseDestination):
                 raise StorageError(f"BigQuery write errors: {errors}")
             return len(data)
 
-        return await asyncio.get_event_loop().run_in_executor(None, _write)
+        return await asyncio.get_running_loop().run_in_executor(None, _write)
 
 
 class MySQLWriter(BaseDestination):
