@@ -9,15 +9,16 @@ use std::path::PathBuf;
     version = env!("CARGO_PKG_VERSION"),
     author,
     about = "Convert unstructured documents to validated structured data",
-    long_about = None,
+    long_about = "Structure-D: Ingest unstructured files (PDF, HTML, XLSX, email, text)\n\
+                  and extract validated structured data via any LLM provider.",
 )]
 pub struct Cli {
-    /// Path to config file (default: configs/default.yaml)
-    #[arg(short, long, global = true, value_name = "FILE")]
+    /// Path to config file (overrides configs/default-rust.yaml)
+    #[arg(long, global = true, value_name = "FILE")]
     pub config: Option<PathBuf>,
 
     /// Log level: error, warn, info, debug, trace
-    #[arg(short, long, global = true, default_value = "warn", env = "SD_LOG_LEVEL")]
+    #[arg(short = 'L', long, global = true, default_value = "warn", env = "SD_LOG_LEVEL")]
     pub log_level: String,
 
     #[command(subcommand)]
@@ -32,18 +33,21 @@ pub enum Commands {
     /// Process all files in a directory concurrently
     Batch(commands::batch::BatchArgs),
 
-    /// Start the built-in REST API server (coming soon)
-    Serve(commands::serve::ServeArgs),
+    /// Show effective configuration (resolved from file + env vars)
+    Config(commands::config::ConfigArgs),
+
+    /// List and check configured LLM providers
+    Providers(commands::providers::ProvidersArgs),
 
     /// List available models from the model registry
     Models(commands::models::ModelsArgs),
 
-    /// List built-in extraction schemas
-    Schemas,
+    /// List built-in schemas (or print a schema definition)
+    Schemas(commands::schemas::SchemasArgs),
 
-    /// List supported file formats and their parsers
+    /// List supported file formats and parsers
     Formats,
 
-    /// Launch interactive terminal (default when no command given)
+    /// Launch the interactive terminal
     Interactive,
 }

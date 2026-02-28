@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use crate::config::Settings;
 use crate::pipeline::Pipeline;
 use crate::schemas::resolve_schema;
-use crate::storage::{jsonl, csv_store};
+use crate::storage::{csv_store, jsonl};
 
 #[derive(Args, Debug)]
 pub struct BatchArgs {
@@ -14,9 +14,9 @@ pub struct BatchArgs {
     #[arg(required = true, value_name = "DIR")]
     pub directory: PathBuf,
 
-    /// Max parallel files (default: from config)
-    #[arg(short, long, default_value = "4", value_name = "N")]
-    pub concurrency: usize,
+    /// Max parallel files [default: from config]
+    #[arg(short = 'n', long, value_name = "N")]
+    pub concurrency: Option<usize>,
 
     /// Recurse into subdirectories
     #[arg(short, long)]
@@ -31,30 +31,50 @@ pub struct BatchArgs {
     pub schema: String,
 
     /// Output format: jsonl or csv
-    #[arg(short = 'f', long, default_value = "jsonl",
-          value_parser = clap::builder::PossibleValuesParser::new(["jsonl", "csv"]))]
+    #[arg(
+        short = 'f',
+        long,
+        default_value = "jsonl",
+        value_parser = clap::builder::PossibleValuesParser::new(["jsonl", "csv"])
+    )]
     pub output_format: String,
 
-    /// Output file path
+    /// Output file path [default: output/batch_results.jsonl|csv]
     #[arg(short, long, value_name = "FILE")]
     pub output: Option<PathBuf>,
 
-    /// File extensions to include (e.g., pdf,txt,html). Default: all supported.
-    #[arg(long, value_delimiter = ',')]
+    /// File extensions to include, comma-separated (default: all supported)
+    #[arg(long, value_delimiter = ',', value_name = "EXT,...")]
     pub extensions: Vec<String>,
+
+    /// Override LLM provider for this run
+    #[arg(long, value_name = "PROVIDER")]
+    pub provider: Option<String>,
+
+    /// Override model for this run
+    #[arg(short, long, value_name = "MODEL")]
+    pub model: Option<String>,
 }
 
-pub async fn run(args: BatchArgs, config: Settings) -> Result<()> {
+pub async fn run(args: BatchArgs, mut config: Settings) -> Result<()> {
     if !args.directory.is_dir() {
         anyhow::bail!("'{}' is not a directory", args.directory.display());
     }
 
+    // Apply overrides
+    if let Some(provider) = &args.provider {
+        config.inference.provider = provider.clone();
+    }
+    let concurrency = args
+        .concurrency
+        .unwrap_or(config.inference.batch.max_concurrent);
+
     // Collect files
-    let supported_exts = if args.extensions.is_empty() {
-        vec!["pdf", "html", "htm", "xlsx", "xls", "eml", "txt", "md", "csv"]
-            .into_iter()
+    let supported_exts: Vec<String> = if args.extensions.is_empty() {
+        ["pdf", "html", "htm", "xlsx", "xls", "eml", "txt", "md", "csv"]
+            .iter()
             .map(|s| s.to_string())
-            .collect::<Vec<_>>()
+            .collect()
     } else {
         args.extensions.clone()
     };
@@ -67,24 +87,27 @@ pub async fn run(args: BatchArgs, config: Settings) -> Result<()> {
     }
 
     println!(
-        "{} {} files in {}",
+        "{} {} files in {} (concurrency: {})",
         "Found".bright_blue().bold(),
         files.len(),
-        args.directory.display()
+        args.directory.display(),
+        concurrency
     );
 
     let schema = resolve_schema(&args.schema)?;
     let pipeline = Pipeline::new(schema, &args.task, config)?;
 
     let results_map = pipeline
-        .run_many(&files, args.concurrency, None, None)
+        .run_many(&files, concurrency, None, args.model.as_deref())
         .await?;
 
     let all_results: Vec<_> = results_map.into_values().flatten().collect();
+    let valid = all_results.iter().filter(|r| r.is_valid).count();
 
     println!(
-        "{} {} total results from {} files",
+        "{} {}/{} results valid across {} files",
         "Extracted".bright_green().bold(),
+        valid,
         all_results.len(),
         files.len()
     );
@@ -111,7 +134,11 @@ pub async fn run(args: BatchArgs, config: Settings) -> Result<()> {
     Ok(())
 }
 
-fn collect_files(dir: &PathBuf, recursive: bool, extensions: &[String]) -> Result<Vec<PathBuf>> {
+fn collect_files(
+    dir: &PathBuf,
+    recursive: bool,
+    extensions: &[String],
+) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
 
     for entry in std::fs::read_dir(dir)? {

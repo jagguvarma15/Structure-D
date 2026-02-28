@@ -22,7 +22,7 @@ use config::Settings;
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Initialise tracing / structured logging
+    // Initialise structured logging
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new(&cli.log_level));
 
@@ -31,7 +31,7 @@ async fn main() -> Result<()> {
         .with(env_filter)
         .init();
 
-    // Load configuration
+    // Load configuration (info commands don't need it, but config errors should surface early)
     let config = match Settings::load(cli.config.as_ref()) {
         Ok(cfg) => cfg,
         Err(e) => {
@@ -40,12 +40,13 @@ async fn main() -> Result<()> {
         }
     };
 
-    // Dispatch to subcommand (or interactive if none given)
     match cli.command {
+        // Default: launch interactive terminal
         None | Some(Commands::Interactive) => {
             terminal::run_interactive()?;
         }
 
+        // ── Core pipeline commands ─────────────────────────────────────────
         Some(Commands::Extract(args)) => {
             cli::commands::extract::run(args, config).await?;
         }
@@ -54,38 +55,25 @@ async fn main() -> Result<()> {
             cli::commands::batch::run(args, config).await?;
         }
 
-        Some(Commands::Serve(args)) => {
-            cli::commands::serve::run(args, config).await?;
+        // ── Inspection / discovery commands ───────────────────────────────
+        Some(Commands::Config(args)) => {
+            cli::commands::config::run(args, config)?;
+        }
+
+        Some(Commands::Providers(args)) => {
+            cli::commands::providers::run(args, config).await?;
         }
 
         Some(Commands::Models(args)) => {
             cli::commands::models::run(args, config)?;
         }
 
-        Some(Commands::Schemas) => {
-            println!("\n{}", "Built-in Schemas".bold().underline());
-            println!();
-            for (name, desc) in schemas::list_schemas() {
-                println!("  {:<30} {}", name.yellow(), desc.dimmed());
-            }
-            println!();
-            println!(
-                "  {} structure-d extract file.pdf --schema <name>",
-                "Usage:".bold()
-            );
-            println!(
-                "  {} Pass a JSON file path to use a custom schema.\n",
-                "       ".dimmed()
-            );
+        Some(Commands::Schemas(args)) => {
+            cli::commands::schemas::run(args)?;
         }
 
         Some(Commands::Formats) => {
-            println!("\n{}", "Supported File Formats".bold().underline());
-            println!();
-            for (fmt_name, desc) in ingestion::SUPPORTED_FORMATS {
-                println!("  {:<20} {}", fmt_name.yellow(), desc.dimmed());
-            }
-            println!();
+            cli::commands::formats::run()?;
         }
     }
 

@@ -1,13 +1,13 @@
 use anyhow::Result;
 use clap::Args;
 use colored::Colorize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::config::Settings;
 
 #[derive(Args, Debug)]
 pub struct ModelsArgs {
-    /// Show full model details
+    /// Show full model details including description
     #[arg(short, long)]
     pub verbose: bool,
 }
@@ -19,17 +19,17 @@ pub fn run(args: ModelsArgs, config: Settings) -> Result<()> {
         config.inference.provider.bright_cyan()
     );
 
-    // Try to load models.yaml from standard locations
-    // Check for models.yaml
-    let yaml_paths = [
-        "configs/models.yaml",
-        "models.yaml",
-        "~/.structure-d/models.yaml",
+    // Search paths for models.yaml (with proper ~ expansion)
+    let mut search_paths: Vec<PathBuf> = vec![
+        PathBuf::from("configs/models.yaml"),
+        PathBuf::from("models.yaml"),
     ];
+    if let Some(home) = dirs::home_dir() {
+        search_paths.push(home.join(".structure-d").join("models.yaml"));
+    }
 
     let mut loaded = false;
-    for yaml_path in &yaml_paths {
-        let path = Path::new(yaml_path);
+    for path in &search_paths {
         if path.exists() {
             match load_models_yaml(path, args.verbose) {
                 Ok(_) => {
@@ -37,44 +37,58 @@ pub fn run(args: ModelsArgs, config: Settings) -> Result<()> {
                     break;
                 }
                 Err(e) => {
-                    eprintln!("  Warning: failed to load {}: {}", yaml_path, e);
+                    eprintln!("  Warning: failed to load {}: {}", path.display(), e);
                 }
             }
         }
     }
 
     if !loaded {
-        // Show provider defaults from config
-        println!("  {}", "No models.yaml found. Showing config defaults:".dimmed());
-        println!();
-
-        let rows = vec![
-            ("vllm", &config.inference.vllm.model, &config.inference.vllm.api_base),
-            ("openai", &config.inference.openai.model, &config.inference.openai.base_url),
-            ("ollama", &config.inference.ollama.model, &config.inference.ollama.base_url),
-        ];
+        println!(
+            "  {}\n",
+            "No models.yaml found. Showing provider defaults from config:".dimmed()
+        );
 
         println!(
-            "  {:<12} {:<40} {}",
+            "  {:<12} {:<45} {}",
             "Provider".bold(),
-            "Default Model".bold(),
-            "API Base".bold()
+            "Model".bold(),
+            "Endpoint".bold()
         );
         println!("  {}", "-".repeat(80));
-        for (provider, model, base) in rows {
-            println!(
-                "  {:<12} {:<40} {}",
-                provider.yellow(),
-                model,
-                base.dimmed()
-            );
-        }
-        println!();
-        println!("  {}", "Anthropic:".yellow());
-        println!("    Model: {}", config.inference.anthropic.model);
-        println!();
-        println!("  {}", "Gemini:".yellow());
-        println!("    Model: {}", config.inference.gemini.model);
+
+        println!(
+            "  {:<12} {:<45} {}",
+            "vllm".yellow(),
+            config.inference.vllm.model,
+            config.inference.vllm.api_base.dimmed()
+        );
+        println!(
+            "  {:<12} {:<45} {}",
+            "openai".yellow(),
+            config.inference.openai.model,
+            config.inference.openai.base_url.dimmed()
+        );
+        println!(
+            "  {:<12} {:<45} {}",
+            "anthropic".yellow(),
+            config.inference.anthropic.model,
+            "https://api.anthropic.com/v1".dimmed()
+        );
+        println!(
+            "  {:<12} {:<45} {}",
+            "gemini".yellow(),
+            config.inference.gemini.model,
+            "https://generativelanguage.googleapis.com/v1beta".dimmed()
+        );
+        println!(
+            "  {:<12} {:<45} {}",
+            "ollama".yellow(),
+            config.inference.ollama.model,
+            config.inference.ollama.base_url.dimmed()
+        );
+
+        println!("\n  {} configs/models.yaml", "Add a model registry:".dimmed());
     }
 
     println!();
@@ -87,47 +101,64 @@ fn load_models_yaml(path: &Path, verbose: bool) -> Result<()> {
 
     println!("  {} {}\n", "Registry:".dimmed(), path.display());
 
-    if let Some(models) = yaml.get("models").and_then(|m| m.as_sequence()) {
+    let models = yaml
+        .get("models")
+        .and_then(|m| m.as_sequence())
+        .map(|s| s.as_slice())
+        .unwrap_or(&[]);
+
+    if models.is_empty() {
+        println!("  {}", "No models found in registry.".dimmed());
+        return Ok(());
+    }
+
+    println!(
+        "  {:<22} {:<35} {:<12} {}",
+        "Name".bold(),
+        "Model ID".bold(),
+        "Provider".bold(),
+        "Tasks".bold()
+    );
+    println!("  {}", "-".repeat(90));
+
+    for model in models {
+        let name = model.get("name").and_then(|v| v.as_str()).unwrap_or("?");
+        let model_id = model
+            .get("model_id")
+            .or_else(|| model.get("id"))
+            .and_then(|v| v.as_str())
+            .unwrap_or(name); // fall back to name if no model_id key
+        let provider = model
+            .get("provider")
+            .and_then(|v| v.as_str())
+            .unwrap_or("?");
+        let tasks = model
+            .get("tasks")
+            .and_then(|v| v.as_sequence())
+            .map(|seq| {
+                seq.iter()
+                    .filter_map(|t| t.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            })
+            .unwrap_or_default();
+
         println!(
-            "  {:<20} {:<30} {:<15} {}",
-            "Name".bold(),
-            "Model ID".bold(),
-            "Provider".bold(),
-            "Tasks".bold()
+            "  {:<22} {:<35} {:<12} {}",
+            name.yellow(),
+            model_id,
+            provider.cyan(),
+            tasks.dimmed()
         );
-        println!("  {}", "-".repeat(80));
 
-        for model in models {
-            let name = model.get("name").and_then(|v| v.as_str()).unwrap_or("?");
-            let model_id = model.get("model_id").and_then(|v| v.as_str()).unwrap_or("?");
-            let provider = model.get("provider").and_then(|v| v.as_str()).unwrap_or("?");
-            let tasks = model
-                .get("tasks")
-                .and_then(|v| v.as_sequence())
-                .map(|seq| {
-                    seq.iter()
-                        .filter_map(|t| t.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                })
-                .unwrap_or_default();
-
-            println!(
-                "  {:<20} {:<30} {:<15} {}",
-                name.yellow(),
-                model_id,
-                provider.cyan(),
-                tasks.dimmed()
-            );
-
-            if verbose {
-                if let Some(desc) = model.get("description").and_then(|v| v.as_str()) {
-                    println!("    {}", desc.dimmed());
-                }
+        if verbose {
+            if let Some(desc) = model.get("description").and_then(|v| v.as_str()) {
+                println!("    {}", desc.dimmed());
+            }
+            if let Some(ctx) = model.get("context_length").and_then(|v| v.as_u64()) {
+                println!("    context: {} tokens", ctx);
             }
         }
-    } else {
-        println!("  {}", "No models found in registry.".dimmed());
     }
 
     Ok(())
