@@ -59,9 +59,15 @@ ingestion = [
     "unstructured[all-docs]>=0.15",
 ]
 
-# vLLM inference
-inference = [
+# LLM API clients (OpenAI, Anthropic, Gemini — lightweight, cloud-hosted)
+llm = [
     "openai>=1.30",
+    "anthropic>=0.28",
+    "google-generativeai>=0.8",
+]
+
+# Heavy inference deps (self-hosted vLLM or local HuggingFace models)
+inference = [
     "vllm>=0.6",
     "transformers>=4.40",
     "torch>=2.2",
@@ -121,7 +127,7 @@ orchestration = [
 
 # All extras
 all = [
-    "structure-d[ingestion,inference,retrieval,storage,api,monitoring,orchestration]",
+    "structure-d[ingestion,llm,inference,retrieval,storage,api,monitoring,orchestration]",
 ]
 
 # Development
