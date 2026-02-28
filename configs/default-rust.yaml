@@ -1,0 +1,67 @@
+# ──────────────────────────────────────────────────────────────
+# Structure-D – Rust CLI configuration
+# ──────────────────────────────────────────────────────────────
+# This config is used by the Rust CLI binary.
+# The Python library uses configs/default.yaml instead.
+#
+# Override via environment variables: SD_<SECTION>__<KEY>
+# e.g. SD_INFERENCE__PROVIDER=openai
+#      SD_INFERENCE__OPENAI__API_KEY=sk-...
+#      SD_INFERENCE__VLLM__API_BASE=http://localhost:8000/v1
+
+ingestion:
+  default_parser: "auto"
+  ocr_engine: "tesseract"
+  max_file_size_mb: 200
+
+preprocessing:
+  normalize_unicode: true
+  strip_boilerplate: true
+  collapse_whitespace: true
+  chunking:
+    strategy: "semantic"         # fixed | sentence | heading | semantic
+    max_tokens: 1024
+    overlap: 128
+    heading_levels: [1, 2, 3]
+
+inference:
+  provider: "vllm"               # vllm | openai | anthropic | gemini | ollama
+  temperature: 0.0
+  max_tokens: 2048
+  vllm:
+    api_base: "http://localhost:8000/v1"
+    model: "meta-llama/Meta-Llama-3.1-8B-Instruct"
+    structured_output_backend: "auto"
+    gpu_memory_utilization: 0.9
+  openai:
+    model: "gpt-4o-mini"
+    base_url: "https://api.openai.com/v1"
+  anthropic:
+    model: "claude-sonnet-4-6"
+  gemini:
+    model: "gemini-2.0-flash"
+  ollama:
+    base_url: "http://localhost:11434"
+    model: "llama3.1"
+  batch:
+    max_batch_size: 32
+    max_concurrent: 4
+
+validation:
+  strict: false
+  max_retries: 3
+  retry_with_refined_prompt: true
+  fallback_to_regex: true
+
+storage:
+  default_format: "jsonl"
+  output_dir: "./output"
+
+api:
+  host: "0.0.0.0"
+  port: 7433
+
+monitoring:
+  log_level: "warn"
+  prometheus_enabled: false
+  prometheus_port: 9090

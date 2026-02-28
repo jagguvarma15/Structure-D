@@ -1,0 +1,63 @@
+[package]
+name = "structure-d"
+version = "0.1.0"
+edition = "2021"
+authors = ["JagadeshVarma"]
+description = "Structure-D CLI: Convert unstructured documents to validated structured data"
+license = "MIT"
+
+[[bin]]
+name = "structure-d"
+path = "src/main.rs"
+
+[dependencies]
+# CLI
+clap = { version = "4", features = ["derive", "env", "color"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# HTTP client (LLM providers)
+reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"], default-features = false }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+
+# Config layering (YAML + env vars)
+figment = { version = "0.10", features = ["yaml", "env"] }
+
+# TUI (Phase 6)
+ratatui = "0.29"
+crossterm = "0.28"
+
+# Progress bars
+indicatif = { version = "0.17", features = ["rayon"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Utilities
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+regex = "1"
+unicode-normalization = "0.1"
+dirs = "5"
+colored = "2"
+
+# CSV output
+csv = "1"
+
+# File parsers
+lopdf = "0.34"
+calamine = { version = "0.25", features = ["dates"] }
+scraper = "0.20"
+mailparse = "0.15"
