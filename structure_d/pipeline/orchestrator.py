@@ -138,7 +138,7 @@ class Pipeline:
             schema_cls=schema_cls,
             task=task,
             provider=self.provider,
-        )
+        )   
 
         # ── Storage ───────────────────────────────────────────────────────────
         self.jsonl_writer = JSONLWriter()
