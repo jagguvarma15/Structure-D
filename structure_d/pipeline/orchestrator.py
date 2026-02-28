@@ -326,11 +326,42 @@ class Pipeline:
     async def run_many(
         self,
         file_paths: list[Path],
+        *,
+        max_concurrent: int | None = None,
         **kwargs: Any,
     ) -> dict[str, list[ExtractionResult]]:
-        """Run the pipeline on multiple files (any format) and return results keyed by filename."""
-        all_results: dict[str, list[ExtractionResult]] = {}
-        for fp in file_paths:
-            results = await self.run(fp, **kwargs)
-            all_results[fp.name] = results
-        return all_results
+        """
+        Run the pipeline on multiple files concurrently.
+
+        Files are processed in parallel up to *max_concurrent* at a time
+        (default: ``inference.batch.max_concurrent_files`` from config).
+        A semaphore prevents unbounded memory growth when hundreds of files
+        are submitted at once.
+
+        Parameters
+        ----------
+        file_paths:
+            Files to process.
+        max_concurrent:
+            Maximum number of files processed simultaneously.  Pass ``1`` to
+            restore sequential behaviour.
+        **kwargs:
+            Forwarded verbatim to :meth:`run` (``model``, ``save_format``, …).
+
+        Returns
+        -------
+        dict mapping each filename to its list of :class:`ExtractionResult`.
+        """
+        import asyncio
+
+        settings = get_settings()
+        limit = max_concurrent or settings.inference.batch.max_concurrent_files
+        semaphore = asyncio.Semaphore(limit)
+
+        async def _run_one(fp: Path) -> tuple[str, list[ExtractionResult]]:
+            async with semaphore:
+                results = await self.run(fp, **kwargs)
+                return fp.name, results
+
+        pairs = await asyncio.gather(*(_run_one(fp) for fp in file_paths))
+        return dict(pairs)

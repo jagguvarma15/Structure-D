@@ -127,6 +127,7 @@ class VLLMConfig(BaseModel):
 class BatchConfig(BaseModel):
     max_batch_size: int = 32
     flush_interval_seconds: float = 1.0
+    max_concurrent_files: int = 4
 
 
 class OpenAIProviderConfig(BaseModel):
