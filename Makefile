@@ -1,25 +1,32 @@
 .PHONY: install install-dev install-vllm install-all build-rust test clean help
 
+VENV := .venv
+PYTHON := $(VENV)/bin/python
+PIP := $(VENV)/bin/python -m pip
+
 # ─── Onboarding ──────────────────────────────────────────────────────────────
 
 ## Build the Rust CLI + install Python SDK (start here)
 install:
-	cargo build --release
-	pip install -e ".[ingestion,api,llm]"
-	@echo ""
-	@echo "Done. Run: ./target/release/structure-d --help"
+	@command -v cargo >/dev/null 2>&1 || (echo "Installing Rust (rustup)..." && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y); \
+	. "$$HOME/.cargo/env" 2>/dev/null || true; \
+	cargo build --release && \
+	(test -d $(VENV) || python3 -m venv $(VENV)) && \
+	$(PIP) install -e ".[ingestion,api,llm]" && \
+	echo "" && \
+	echo "Done. Activate the venv and run: source $(VENV)/bin/activate && structure-d --help"
 
 ## Install + dev tools (pytest, ruff, mypy)
 install-dev:
-	pip install -e ".[ingestion,api,llm,dev]"
+	$(PIP) install -e ".[ingestion,api,llm,dev]"
 
 ## Add self-hosted inference support (vLLM, HuggingFace — requires GPU, large download)
 install-vllm:
-	pip install -e ".[inference]"
+	$(PIP) install -e ".[inference]"
 
 ## Install every optional dependency
 install-all:
-	pip install -e ".[all,dev]"
+	$(PIP) install -e ".[all,dev]"
 
 # ─── Rust CLI (optional, for performance) ────────────────────────────────────
 
