@@ -1,17 +1,19 @@
-"""Batch processing: group chunks and dispatch to vLLM efficiently."""
+"""Batch processing: group chunks and dispatch to the configured provider."""
 
 from __future__ import annotations
 
 import asyncio
+import json
 import time
-from typing import Any, Type
+from typing import Type
 
 import structlog
 from pydantic import BaseModel
 
 from structure_d.config import get_settings
+from structure_d.exceptions import InferenceError
+from structure_d.inference.providers import BaseLLMProvider, VLLMProvider
 from structure_d.inference.structured_output import StructuredOutputBuilder
-from structure_d.inference.vllm_client import VLLMClient
 from structure_d.schemas.base import ExtractionResult, TaskType, TextChunk
 
 logger = structlog.get_logger(__name__)
@@ -19,24 +21,30 @@ logger = structlog.get_logger(__name__)
 
 class BatchProcessor:
     """
-    Process a list of text chunks through vLLM in configurable batches.
+    Process a list of text chunks through an LLM provider in configurable batches.
+
+    Accepts any :class:`~structure_d.inference.providers.BaseLLMProvider`
+    implementation – vLLM, OpenAI, Anthropic, Gemini, or Ollama.  When no
+    provider is supplied the default is :class:`VLLMProvider`.
+
+    Requests within each batch run concurrently via ``asyncio.gather``.
 
     Usage::
 
-        processor = BatchProcessor(schema_cls=InvoiceSchema)
-        results = await processor.process(chunks, model="llama-3.1-8b")
+        processor = BatchProcessor(schema_cls=InvoiceSchema, provider=OpenAIProvider())
+        results = await processor.process(chunks, model="gpt-4o")
     """
 
     def __init__(
         self,
         schema_cls: Type[BaseModel],
         task: TaskType = TaskType.EXTRACTION,
-        client: VLLMClient | None = None,
+        provider: BaseLLMProvider | None = None,
         max_batch_size: int | None = None,
         few_shot_examples: list[dict[str, str]] | None = None,
     ) -> None:
         settings = get_settings()
-        self.client = client or VLLMClient()
+        self.provider = provider or VLLMProvider()
         self.schema_cls = schema_cls
         self.task = task
         self.max_batch_size = max_batch_size or settings.inference.batch.max_batch_size
@@ -49,15 +57,25 @@ class BatchProcessor:
     async def process(
         self,
         chunks: list[TextChunk],
-        model: str,
+        model: str | None = None,
         *,
         temperature: float = 0.0,
         max_tokens: int = 2048,
     ) -> list[ExtractionResult]:
         """
-        Send all *chunks* through vLLM and return :class:`ExtractionResult` objects.
+        Send all *chunks* through the provider and return :class:`ExtractionResult` objects.
 
-        Requests within each batch run concurrently via ``asyncio.gather``.
+        Parameters
+        ----------
+        chunks:
+            Text chunks to process.
+        model:
+            Override the model for this batch (passed to the provider;
+            providers that don't support runtime model switching ignore it).
+        temperature:
+            Sampling temperature.
+        max_tokens:
+            Maximum tokens to generate per chunk.
         """
         results: list[ExtractionResult] = []
 
@@ -82,7 +100,7 @@ class BatchProcessor:
                             document_id=chunk.metadata.document_id,
                             chunk_id=chunk.metadata.chunk_id,
                             task=self.task,
-                            model_used=model,
+                            model_used=model or "",
                             is_valid=False,
                             validation_errors=[str(res)],
                         )
@@ -95,42 +113,48 @@ class BatchProcessor:
     async def _process_one(
         self,
         chunk: TextChunk,
-        model: str,
+        model: str | None,
         temperature: float,
         max_tokens: int,
     ) -> ExtractionResult:
-        messages = self.builder.build_messages(chunk.text)
-        schema = self.builder.json_schema()
+        system_prompt = self.builder.build_system_prompt()
 
         t0 = time.monotonic()
-        response = await self.client.chat(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            json_schema=schema,
-        )
-        latency = (time.monotonic() - t0) * 1000
+        try:
+            pr = await self.provider.generate(
+                prompt=chunk.text,
+                schema=self.schema_cls,
+                system_prompt=system_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                model=model,
+            )
+        except InferenceError as exc:
+            latency = (time.monotonic() - t0) * 1000
+            return ExtractionResult(
+                document_id=chunk.metadata.document_id,
+                chunk_id=chunk.metadata.chunk_id,
+                task=self.task,
+                model_used=model or "",
+                raw_output="",
+                is_valid=False,
+                validation_errors=[str(exc)],
+                latency_ms=round(latency, 1),
+            )
 
-        # Parse response
-        raw_text = ""
-        usage: dict[str, int] = {}
-        choices = response.get("choices", [])
-        if choices:
-            raw_text = choices[0].get("message", {}).get("content", "")
-        if "usage" in response:
-            usage = {
-                "prompt_tokens": response["usage"].get("prompt_tokens", 0),
-                "completion_tokens": response["usage"].get("completion_tokens", 0),
-                "total_tokens": response["usage"].get("total_tokens", 0),
-            }
+        latency = (time.monotonic() - t0) * 1000
+        structured = pr.output.model_dump()
+        # Ensure raw_text is valid JSON even if the provider returned something else
+        raw_text = pr.raw_text or json.dumps(structured)
 
         return ExtractionResult(
             document_id=chunk.metadata.document_id,
             chunk_id=chunk.metadata.chunk_id,
             task=self.task,
-            model_used=model,
+            model_used=pr.model_used,
             raw_output=raw_text,
+            structured_output=structured,
+            is_valid=True,
             latency_ms=round(latency, 1),
-            token_usage=usage,
+            token_usage=pr.token_usage,
         )

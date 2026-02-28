@@ -12,7 +12,7 @@ from typing import Any
 import structlog
 
 from structure_d.config import get_settings
-from structure_d.inference.vllm_client import VLLMClient
+from structure_d.inference.providers import BaseLLMProvider, VLLMProvider
 from structure_d.retrieval.embeddings import EmbeddingService
 from structure_d.retrieval.vector_store import VectorStoreBase
 from structure_d.schemas.base import TextChunk
@@ -27,25 +27,32 @@ class RAGPipeline:
     Uses :class:`structure_d.indexing.VectorStoreIndex` and
     :class:`structure_d.indexing.QueryEngine` under the hood.
 
+    The *provider* accepts any
+    :class:`~structure_d.inference.providers.BaseLLMProvider` implementation
+    so that the same RAG pipeline can be used with vLLM, OpenAI, Anthropic, etc.
+
     Usage::
 
-        rag = RAGPipeline(vector_store=my_store, embedding_service=my_emb)
+        rag = RAGPipeline(
+            vector_store=my_store,
+            provider=OpenAIProvider(api_key="sk-..."),
+        )
         await rag.index_chunks(chunks)
-        answer = await rag.query("What is the total amount?", model="llama-3.1-8b")
+        answer = await rag.query("What is the total amount?")
     """
 
     def __init__(
         self,
         vector_store: VectorStoreBase,
         embedding_service: EmbeddingService | None = None,
-        client: VLLMClient | None = None,
+        provider: BaseLLMProvider | None = None,
         top_k: int | None = None,
         similarity_threshold: float | None = None,
     ) -> None:
         settings = get_settings()
         self.vector_store = vector_store
         self.embedding_service = embedding_service or EmbeddingService()
-        self.client = client or VLLMClient()
+        self.provider = provider or VLLMProvider()
         self.top_k = top_k or settings.retrieval.top_k
         self.similarity_threshold = similarity_threshold or settings.retrieval.similarity_threshold
         self._index: Any = None
@@ -81,33 +88,37 @@ class RAGPipeline:
         top_k: int | None = None,
         filter_metadata: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        """Embed *query* and retrieve relevant chunks (returns list of dicts for compatibility)."""
+        """Embed *query* and retrieve relevant chunks (returns list of dicts)."""
         index = self._get_index()
         retriever = index.as_retriever(
             top_k=top_k or self.top_k,
             similarity_threshold=self.similarity_threshold,
         )
-        nodes = await retriever.retrieve(query, top_k=top_k or self.top_k, filter_metadata=filter_metadata)
+        nodes = await retriever.retrieve(
+            query,
+            top_k=top_k or self.top_k,
+            filter_metadata=filter_metadata,
+        )
         return [n.to_retrieval_result() for n in nodes]
 
     async def query(
         self,
         question: str,
-        model: str,
+        model: str | None = None,
         *,
         top_k: int | None = None,
         temperature: float = 0.0,
         max_tokens: int = 2048,
         system_prompt: str | None = None,
     ) -> str:
-        """Full RAG: retrieve context, compose prompt, generate answer (via QueryEngine)."""
+        """Full RAG: retrieve context, compose prompt, generate answer."""
         index = self._get_index()
         retriever = index.as_retriever(top_k=top_k or self.top_k)
         from structure_d.indexing import QueryEngine
 
         engine = QueryEngine(
             retriever=retriever,
-            llm_client=self.client,
+            provider=self.provider,
             response_mode="simple",
             top_k=top_k or self.top_k,
             system_prompt=system_prompt,

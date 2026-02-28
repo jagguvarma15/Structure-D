@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from structure_d.config import get_settings, load_settings
 from structure_d.inference.batch import BatchProcessor
-from structure_d.inference.vllm_client import VLLMClient
+from structure_d.inference.providers import BaseLLMProvider, VLLMProvider
 from structure_d.ingestion.manager import IngestionManager
 from structure_d.models.registry import ModelRegistry
 from structure_d.models.router import ModelRouter
@@ -45,24 +45,38 @@ class Pipeline:
     High-level async pipeline: file → structured data.
 
     Works with **any** supported file format (PDF, image, HTML, DOCX, XLSX,
-    PPTX, email, audio transcript, plain text, CSV, Markdown).  The schema
-    is provided at construction time and determines what gets extracted.
+    PPTX, email, audio transcript, plain text, CSV, Markdown).  The schema is
+    provided at construction time and determines what gets extracted.
+
+    The *provider* argument accepts any
+    :class:`~structure_d.inference.providers.BaseLLMProvider` implementation:
+
+    * ``VLLMProvider()`` (default) – self-hosted vLLM server
+    * ``OpenAIProvider(api_key="sk-...")``
+    * ``AnthropicProvider(api_key="...")``
+    * ``GeminiProvider(api_key="...")``
+    * ``OllamaProvider(base_url="http://localhost:11434")``
+    * Any custom provider that sub-classes ``BaseLLMProvider``
 
     Usage::
 
         from structure_d.pipeline import Pipeline
+        from structure_d.inference.providers import OpenAIProvider
         from structure_d.schemas.generic import KeyValueExtraction
 
-        pipeline = Pipeline(schema_cls=KeyValueExtraction)
+        pipeline = Pipeline(
+            schema_cls=KeyValueExtraction,
+            provider=OpenAIProvider(api_key="sk-..."),
+        )
         results = await pipeline.run(Path("docs/report.pdf"))
 
     Each call to :meth:`run` performs:
 
     1. **Ingest** – parse the file via the appropriate format parser.
     2. **Pre-process** – normalise and chunk the text.
-    3. **Route** – select the best model for the task.
-    4. **Infer** – send chunks to vLLM in batches.
-    5. **Validate** – check outputs against the Pydantic schema; retry on error.
+    3. **Route** – (vLLM only) select the best model for the task.
+    4. **Infer** – send chunks to the provider in batches.
+    5. **Validate** – check outputs; retry on error.
     6. **Store** – write results to JSONL / CSV / database.
     """
 
@@ -72,10 +86,11 @@ class Pipeline:
         task: TaskType = TaskType.EXTRACTION,
         config_path: str | Path | None = None,
         *,
+        # Provider (replaces the old vllm_client parameter)
+        provider: BaseLLMProvider | None = None,
         # Optional component overrides
         ingestion_manager: IngestionManager | None = None,
         model_registry: ModelRegistry | None = None,
-        vllm_client: VLLMClient | None = None,
         vector_store: VectorStoreBase | None = None,
         enable_rag: bool | None = None,
     ) -> None:
@@ -90,7 +105,11 @@ class Pipeline:
         self.schema_cls = schema_cls
         self.task = task
 
-        # Components
+        # ── Provider ──────────────────────────────────────────────────────────
+        # Default to vLLM so existing deployments keep working unchanged.
+        self.provider: BaseLLMProvider = provider or VLLMProvider()
+
+        # ── Ingestion ─────────────────────────────────────────────────────────
         self.ingestion = ingestion_manager or IngestionManager()
         self.chunker = Chunker(
             strategy=settings.preprocessing.chunking.strategy,
@@ -99,31 +118,38 @@ class Pipeline:
             heading_level=settings.preprocessing.chunking.heading_level,
         )
 
+        # ── Model routing (vLLM-specific) ─────────────────────────────────────
+        # ModelRouter selects among multiple locally-served models by task and
+        # token count.  Only meaningful for VLLMProvider where the user may
+        # have several models loaded at once; other providers have a fixed model
+        # configured at construction time.
         registry_path = settings.models.registry_path
         self.registry = model_registry or ModelRegistry.from_yaml(registry_path)
         self.router = ModelRouter(self.registry)
+        self._routing_enabled = isinstance(self.provider, VLLMProvider)
 
-        self.client = vllm_client or VLLMClient()
+        # ── Inference ─────────────────────────────────────────────────────────
         self.batch_processor = BatchProcessor(
             schema_cls=schema_cls,
             task=task,
-            client=self.client,
+            provider=self.provider,
         )
         self.retry_handler = RetryHandler(
             schema_cls=schema_cls,
             task=task,
-            client=self.client,
+            provider=self.provider,
         )
 
+        # ── Storage ───────────────────────────────────────────────────────────
         self.jsonl_writer = JSONLWriter()
         self.csv_writer = CSVWriter()
-        
-        # Metrics collector
+
+        # ── Monitoring ────────────────────────────────────────────────────────
         self.metrics = MetricsCollector()
         if settings.monitoring.prometheus.enabled:
             self.metrics.start_server(settings.monitoring.prometheus.port)
-        
-        # RAG pipeline (optional)
+
+        # ── RAG (optional) ────────────────────────────────────────────────────
         self.enable_rag = enable_rag if enable_rag is not None else settings.retrieval.enabled
         self.rag_pipeline: RAGPipeline | None = None
         if self.enable_rag and vector_store:
@@ -131,10 +157,9 @@ class Pipeline:
             self.rag_pipeline = RAGPipeline(
                 vector_store=vector_store,
                 embedding_service=embedding_service,
-                client=self.client,
+                provider=self.provider,
             )
 
-        # Index (built on demand via build_index)
         self._vector_store = vector_store
         self._embedding_service = EmbeddingService() if (vector_store or enable_rag) else None
 
@@ -152,19 +177,7 @@ class Pipeline:
         Load file, chunk into nodes, and build an index.
 
         Returns a :class:`VectorStoreIndex` or :class:`SummaryIndex` with nodes
-        inserted. Use :meth:`index.as_query_engine(llm_client=self.client)` for RAG.
-
-        Parameters
-        ----------
-        file_path
-            Path to the file to index.
-        index_type
-            ``"vector"`` (embed + vector store) or ``"summary"`` (in-memory list).
-        vector_store
-            Required for ``index_type="vector"`` unless the pipeline was created
-            with a vector_store (e.g. RAG enabled).
-        parser_name
-            Override parser (default: auto-detect from extension).
+        inserted.  Use ``index.as_query_engine(provider=self.provider)`` for RAG.
         """
         from structure_d.indexing import DocumentReader, SummaryIndex, VectorStoreIndex
 
@@ -172,9 +185,10 @@ class Pipeline:
         nodes = await reader.load_and_chunk(file_path, parser_name=parser_name)
         if not nodes:
             logger.warning("build_index_no_nodes", path=str(file_path))
+
         if index_type == "summary":
-            index = SummaryIndex(nodes=nodes)
-            return index
+            return SummaryIndex(nodes=nodes)
+
         store = vector_store or self._vector_store
         if store is None:
             raise ValueError(
@@ -205,16 +219,17 @@ class Pipeline:
         parser_name:
             Override the parser (default: auto-detect from extension).
         model:
-            Override the model (default: auto-route by task).
+            Override the model for this run.  For ``VLLMProvider`` the model
+            router is used when *model* is ``None``.  For other providers this
+            overrides the model they were constructed with.
         save_format:
-            "jsonl", "csv" or None (return results without saving).
+            ``"jsonl"``, ``"csv"`` or ``None`` (return without saving).
         output_filename:
-            Custom filename for the output file.
+            Custom base name for the output file.
         """
         t0 = time.monotonic()
         settings = get_settings()
 
-        # Track active request
         with self.metrics.track_request():
             # 1. Ingest
             logger.info("pipeline_start", file=str(file_path), format=file_path.suffix)
@@ -233,13 +248,12 @@ class Pipeline:
         )
         chunks: list[TextChunk] = self.chunker.chunk(text, document_id=doc.metadata.document_id)
 
-        # Propagate format to chunk metadata
         for chunk in chunks:
             chunk.metadata.source_format = source_format
 
         logger.info("pipeline_chunked", chunks=len(chunks), format=source_format.value)
         self.metrics.record_chunks(len(chunks))
-        
+
         # 2.5. Index chunks for RAG (if enabled)
         if self.rag_pipeline:
             try:
@@ -248,10 +262,9 @@ class Pipeline:
             except Exception as e:
                 logger.warning("rag_indexing_failed", error=str(e))
 
-        # 3. Route
-        if model is None:
+        # 3. Route (vLLM only – other providers use their configured model)
+        if model is None and self._routing_enabled:
             avg_tokens = sum(c.metadata.token_count for c in chunks) // max(len(chunks), 1)
-            # Use multimodal model for image-based formats
             prefer_mm = source_format in (DocumentFormat.IMAGE,)
             entry = self.router.route(
                 self.task,
@@ -275,17 +288,15 @@ class Pipeline:
             if not result.is_valid:
                 self.metrics.record_validation_failure(1)
                 logger.debug("validation_failed", elapsed_ms=round(validate_elapsed, 1))
-            
-            # Record token usage
+
             if result.token_usage:
-                prompt_tokens = result.token_usage.get("prompt_tokens", 0)
-                completion_tokens = result.token_usage.get("completion_tokens", 0)
-                self.metrics.record_tokens(prompt=prompt_tokens, completion=completion_tokens)
-            
-            # Record inference latency
+                self.metrics.record_tokens(
+                    prompt=result.token_usage.get("prompt_tokens", 0),
+                    completion=result.token_usage.get("completion_tokens", 0),
+                )
             if result.latency_ms:
                 self.metrics.record_inference_latency(result.latency_ms / 1000.0)
-            
+
             validated.append(result)
 
         # 6. Store
@@ -298,10 +309,8 @@ class Pipeline:
 
         elapsed = (time.monotonic() - t0) * 1000
         valid_count = sum(1 for r in validated if r.is_valid)
-        
-        # Record overall pipeline latency
         self.metrics.record_inference_latency(elapsed / 1000.0)
-        
+
         logger.info(
             "pipeline_complete",
             file=str(file_path),

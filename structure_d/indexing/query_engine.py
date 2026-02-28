@@ -6,13 +6,16 @@ Combines a Retriever with response synthesis for RAG-style Q&A.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
 
 import structlog
 
 from structure_d.config import get_settings
 from structure_d.indexing.base import BaseRetriever
 from structure_d.indexing.documents import Node
+
+if TYPE_CHECKING:
+    from structure_d.inference.providers import BaseLLMProvider
 
 logger = structlog.get_logger(__name__)
 
@@ -71,23 +74,26 @@ class QueryEngine:
     """
     RAG query engine: retrieve nodes, format context, generate answer.
 
+    Accepts any :class:`~structure_d.inference.providers.BaseLLMProvider` for
+    free-text answer generation via :meth:`BaseLLMProvider.generate_text`.
+
     Usage::
 
         retriever = index.as_retriever(top_k=5)
-        engine = QueryEngine(retriever=retriever, llm_client=client)
-        answer = await engine.query("What is the total amount?", model="llama-3.1-8b")
+        engine = QueryEngine(retriever=retriever, provider=OpenAIProvider())
+        answer = await engine.query("What is the total amount?")
     """
 
     def __init__(
         self,
         retriever: BaseRetriever,
-        llm_client: Any = None,
+        provider: BaseLLMProvider | None = None,
         response_mode: str = "simple",
         top_k: int = 5,
         system_prompt: str | None = None,
     ) -> None:
         self.retriever = retriever
-        self.llm_client = llm_client
+        self.provider = provider
         self.synthesizer = ResponseSynthesizer(
             response_mode=response_mode,
             system_prompt=system_prompt,
@@ -112,30 +118,30 @@ class QueryEngine:
         """
         Run full RAG: retrieve context, compose prompt, generate answer.
 
-        If no llm_client was provided at construction, returns formatted context only.
+        If no *provider* was supplied at construction, returns the formatted
+        context string so callers can inspect retrieved content without needing
+        an LLM.
         """
         k = top_k if top_k is not None else self.top_k
         nodes = await self.retriever.retrieve(question, top_k=k)
         context = self.synthesizer.format_context(nodes)
 
-        if system_prompt is None:
-            system_prompt = self.synthesizer.system_prompt
-        sys_content = system_prompt.format(context=context or "(No relevant context found.)")
+        sys_template = system_prompt or self.synthesizer.system_prompt
+        sys_content = sys_template.format(context=context or "(No relevant context found.)")
 
-        if self.llm_client is None:
-            return f"Context:\n{context}\n\nQuestion: {question}\n(No LLM configured; set llm_client for full RAG.)"
+        if self.provider is None:
+            return (
+                f"Context:\n{context}\n\nQuestion: {question}\n"
+                "(No provider configured; pass provider= to QueryEngine for full RAG.)"
+            )
 
         settings = get_settings()
         model_name = model or settings.models.default_model
-        messages = [
-            {"role": "system", "content": sys_content},
-            {"role": "user", "content": question},
-        ]
-        response = await self.llm_client.chat(
-            model=model_name,
-            messages=messages,
+
+        return await self.provider.generate_text(
+            prompt=question,
+            system_prompt=sys_content,
             temperature=temperature,
             max_tokens=max_tokens,
+            model=model_name,
         )
-        choices = response.get("choices", [])
-        return choices[0].get("message", {}).get("content", "") if choices else ""

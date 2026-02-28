@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-import re
-from typing import Any, Type
+import json
+from typing import Type
 
 import structlog
 from pydantic import BaseModel
 
 from structure_d.config import get_settings
+from structure_d.exceptions import InferenceError
+from structure_d.inference.providers import BaseLLMProvider, VLLMProvider
 from structure_d.inference.structured_output import StructuredOutputBuilder
-from structure_d.inference.vllm_client import VLLMClient
 from structure_d.schemas.base import ExtractionResult, TaskType
 from structure_d.validation.validator import SchemaValidator
 
@@ -19,53 +20,60 @@ logger = structlog.get_logger(__name__)
 
 class RetryHandler:
     """
-    Wraps validation + retry logic:
-    1. Validate the raw output.
-    2. If invalid and retries remain, send a refined prompt to the LLM.
-    3. If all retries fail and fallback_to_regex is on, try regex extraction.
+    Validate extraction results and retry on failure.
+
+    Flow
+    ----
+    1. If the result is already valid (``is_valid=True``), return immediately.
+       Providers that use constrained decoding or native structured outputs
+       guarantee validity, so re-validation is redundant.
+    2. If invalid, call ``provider.generate()`` with a *refined prompt* that
+       includes the original text and the error descriptions, giving the model
+       a chance to self-correct.
+    3. Repeat up to ``max_retries`` times.
+
+    The :class:`~structure_d.validation.validator.SchemaValidator` is kept as
+    a utility for callers that need raw-string validation outside this flow.
     """
 
     def __init__(
         self,
         schema_cls: Type[BaseModel],
         task: TaskType = TaskType.EXTRACTION,
-        client: VLLMClient | None = None,
+        provider: BaseLLMProvider | None = None,
         max_retries: int | None = None,
     ) -> None:
         settings = get_settings()
         self.schema_cls = schema_cls
         self.task = task
         self.validator = SchemaValidator(schema_cls)
-        self.client = client or VLLMClient()
+        self.provider = provider or VLLMProvider()
         self.max_retries = max_retries or settings.validation.max_retries
         self.retry_with_prompt = settings.validation.retry_with_refined_prompt
-        self.fallback_regex = settings.validation.fallback_to_regex
         self.builder = StructuredOutputBuilder(schema_cls=schema_cls, task=task)
 
     async def validate_and_retry(
         self,
         result: ExtractionResult,
         original_text: str,
-        model: str,
+        model: str | None = None,
     ) -> ExtractionResult:
         """
-        Validate *result.raw_output* and retry if needed.
+        Ensure *result* is valid, retrying via the provider if it is not.
 
-        Mutates and returns the same :class:`ExtractionResult`.
+        Mutates and returns the same :class:`ExtractionResult` instance.
         """
-        structured, errors = self.validator.validate(result.raw_output)
-
-        if not errors:
-            result.structured_output = structured
-            result.is_valid = True
+        # Fast path: provider already validated the output.
+        if result.is_valid:
             return result
 
-        # Retry loop
-        current_raw = result.raw_output
-        for attempt in range(1, self.max_retries + 1):
-            if not self.retry_with_prompt:
-                break
+        errors = result.validation_errors or ["Provider returned invalid or empty output"]
 
+        if not self.retry_with_prompt:
+            result.validation_errors = errors
+            return result
+
+        for attempt in range(1, self.max_retries + 1):
             logger.info(
                 "validation_retry",
                 attempt=attempt,
@@ -73,55 +81,43 @@ class RetryHandler:
                 chunk_id=result.chunk_id,
             )
 
-            messages = self.builder.build_refined_prompt(original_text, errors)
-            schema = self.builder.json_schema()
+            refined_prompt = self._build_refined_user_prompt(original_text, errors)
+            system_prompt = self.builder.build_system_prompt()
 
-            response = await self.client.chat(
-                model=model,
-                messages=messages,
-                json_schema=schema,
-            )
-
-            choices = response.get("choices", [])
-            if choices:
-                current_raw = choices[0].get("message", {}).get("content", "")
-
-            structured, errors = self.validator.validate(current_raw)
-            if not errors:
-                result.raw_output = current_raw
-                result.structured_output = structured
+            try:
+                pr = await self.provider.generate(
+                    prompt=refined_prompt,
+                    schema=self.schema_cls,
+                    system_prompt=system_prompt,
+                    model=model,
+                )
+                result.raw_output = pr.raw_text or json.dumps(pr.output.model_dump())
+                result.structured_output = pr.output.model_dump()
+                result.model_used = pr.model_used
                 result.is_valid = True
+                result.validation_errors = []
                 return result
+            except InferenceError as exc:
+                errors = [str(exc)]
+                logger.warning(
+                    "validation_retry_failed",
+                    attempt=attempt,
+                    error=str(exc),
+                    chunk_id=result.chunk_id,
+                )
 
-        # Fallback: regex extraction
-        if self.fallback_regex and errors:
-            logger.info("validation_fallback_regex", chunk_id=result.chunk_id)
-            structured = self._regex_fallback(result.raw_output)
-            if structured:
-                re_structured, re_errors = self.validator.validate_dict(structured)
-                if not re_errors:
-                    result.structured_output = re_structured
-                    result.is_valid = True
-                    result.validation_errors = []
-                    return result
-
-        result.structured_output = structured
-        result.is_valid = False
         result.validation_errors = errors
         return result
 
-    # ── Regex fallback ────────────────────────────────────────────────────────
+    # ── Helpers ───────────────────────────────────────────────────────────────
 
     @staticmethod
-    def _regex_fallback(raw: str) -> dict[str, Any]:
-        """
-        Best-effort extraction of key-value pairs using simple regex.
-        Looks for patterns like ``"key": "value"`` or ``"key": 123``.
-        """
-        pairs: dict[str, Any] = {}
-        for m in re.finditer(r'"(\w+)"\s*:\s*"([^"]*)"', raw):
-            pairs[m.group(1)] = m.group(2)
-        for m in re.finditer(r'"(\w+)"\s*:\s*(\d+(?:\.\d+)?)', raw):
-            val = m.group(2)
-            pairs[m.group(1)] = float(val) if "." in val else int(val)
-        return pairs
+    def _build_refined_user_prompt(original_text: str, errors: list[str]) -> str:
+        """Build a retry user prompt that includes prior validation errors."""
+        error_block = "\n".join(f"- {e}" for e in errors)
+        return (
+            f"The previous extraction had the following validation errors:\n"
+            f"{error_block}\n\n"
+            f"Please re-extract the data from the text below, fixing all errors.\n\n"
+            f"{original_text}"
+        )
