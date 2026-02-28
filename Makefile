@@ -2,11 +2,12 @@
 
 # ─── Onboarding ──────────────────────────────────────────────────────────────
 
-## Install the CLI with document parsers + API server + LLM clients (start here)
+## Build the Rust CLI + install Python SDK (start here)
 install:
+	cargo build --release
 	pip install -e ".[ingestion,api,llm]"
 	@echo ""
-	@echo "Done. Run: structure-d --help"
+	@echo "Done. Run: ./target/release/structure-d --help"
 
 ## Install + dev tools (pytest, ruff, mypy)
 install-dev:
@@ -22,11 +23,11 @@ install-all:
 
 # ─── Rust CLI (optional, for performance) ────────────────────────────────────
 
-## Build the fast Rust CLI (requires Rust toolchain: https://rustup.rs)
+## Build the Rust CLI binary
 build-rust:
 	cargo build --release
 	@echo ""
-	@echo "Rust CLI built: ./target/release/structure-d"
+	@echo "Built: ./target/release/structure-d"
 
 # ─── Dev ─────────────────────────────────────────────────────────────────────
 

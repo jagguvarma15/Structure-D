@@ -140,8 +140,8 @@ dev = [
     "pre-commit>=3.7",
 ]
 
-[project.scripts]
-structure-d = "structure_d.cli:main"
+# The primary CLI is the Rust binary (cargo build --release → target/release/structure-d).
+# Python package is a library SDK only — no CLI script installed via pip.
 
 [project.urls]
 Homepage = "https://github.com/JagadeshVarma/Structure-D"

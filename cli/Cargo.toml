@@ -53,6 +53,9 @@ unicode-normalization = "0.1"
 dirs = "5"
 colored = "2"
 
+# Interactive REPL (readline, history, line editing)
+rustyline = "14"
+
 # CSV output
 csv = "1"
 
