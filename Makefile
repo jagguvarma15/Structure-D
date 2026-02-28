@@ -6,15 +6,24 @@ PIP := $(VENV)/bin/python -m pip
 
 # ─── Onboarding ──────────────────────────────────────────────────────────────
 
-## Build the Rust CLI + install Python SDK (start here)
+## Install the CLI + Python SDK (start here)
 install:
-	@command -v cargo >/dev/null 2>&1 || (echo "Installing Rust (rustup)..." && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y); \
-	. "$$HOME/.cargo/env" 2>/dev/null || true; \
-	cargo build --release && \
-	(test -d $(VENV) || python3 -m venv $(VENV)) && \
-	$(PIP) install -e ".[ingestion,api,llm]" && \
-	echo "" && \
-	echo "Done. Activate the venv and run: source $(VENV)/bin/activate && structure-d --help"
+	@command -v cargo >/dev/null 2>&1 || (echo "Installing Rust (rustup)..." && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y)
+	. "$$HOME/.cargo/env" 2>/dev/null || true && cargo build --release
+	@INSTALL_DIR=""; \
+	for dir in /opt/homebrew/bin /usr/local/bin; do \
+	  if echo "$$PATH" | tr ':' '\n' | grep -qx "$$dir"; then \
+	    INSTALL_DIR="$$dir"; break; \
+	  fi; \
+	done; \
+	if [ -z "$$INSTALL_DIR" ]; then \
+	  INSTALL_DIR="/usr/local/bin"; mkdir -p "$$INSTALL_DIR" 2>/dev/null || sudo mkdir -p "$$INSTALL_DIR"; \
+	fi; \
+	cp target/release/structure-d "$$INSTALL_DIR/structure-d" 2>/dev/null || sudo cp target/release/structure-d "$$INSTALL_DIR/structure-d"; \
+	echo "Installed to $$INSTALL_DIR/structure-d"
+	(test -d $(VENV) || python3 -m venv $(VENV)) && $(PIP) install -e ".[ingestion,api,llm]"
+	@echo ""
+	@echo "Done. Run: structure-d --help"
 
 ## Install + dev tools (pytest, ruff, mypy)
 install-dev:
@@ -30,11 +39,20 @@ install-all:
 
 # ─── Rust CLI (optional, for performance) ────────────────────────────────────
 
-## Build the Rust CLI binary
+## Rebuild and reinstall the Rust CLI
 build-rust:
-	cargo build --release
-	@echo ""
-	@echo "Built: ./target/release/structure-d"
+	. "$$HOME/.cargo/env" 2>/dev/null || true && cargo build --release
+	@INSTALL_DIR=""; \
+	for dir in /opt/homebrew/bin /usr/local/bin; do \
+	  if echo "$$PATH" | tr ':' '\n' | grep -qx "$$dir"; then \
+	    INSTALL_DIR="$$dir"; break; \
+	  fi; \
+	done; \
+	if [ -z "$$INSTALL_DIR" ]; then \
+	  INSTALL_DIR="/usr/local/bin"; mkdir -p "$$INSTALL_DIR" 2>/dev/null || sudo mkdir -p "$$INSTALL_DIR"; \
+	fi; \
+	cp target/release/structure-d "$$INSTALL_DIR/structure-d" 2>/dev/null || sudo cp target/release/structure-d "$$INSTALL_DIR/structure-d"; \
+	echo "Installed: structure-d → $$INSTALL_DIR/structure-d"
 
 # ─── Dev ─────────────────────────────────────────────────────────────────────
 
@@ -52,11 +70,12 @@ fmt:
 
 # ─── Cleanup ─────────────────────────────────────────────────────────────────
 
-## Remove build artifacts
+## Remove build artifacts and caches
 clean:
-	rm -rf build dist *.egg-info .pytest_cache __pycache__
+	rm -rf build dist *.egg-info .pytest_cache .ruff_cache .mypy_cache
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	find . -name "*.pyc" -delete
+	. "$$HOME/.cargo/env" 2>/dev/null || true && cargo clean
 
 # ─── Help ────────────────────────────────────────────────────────────────────
 
