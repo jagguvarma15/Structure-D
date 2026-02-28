@@ -13,7 +13,7 @@ use crate::ingestion::{parse_file, ParsedDocument};
 use crate::inference::{get_provider, GenerateRequest, LLMProvider};
 use crate::preprocessing::{normalize_text, Chunker};
 use crate::storage::ExtractionResult;
-use crate::validation::{retry::RetryHandler, validate};
+use crate::validation::retry::RetryHandler;
 
 pub struct Pipeline {
     schema: Value,
@@ -108,8 +108,7 @@ impl Pipeline {
                 _ => inf_cfg.vllm.model.clone(),
             });
 
-        // ── Stages 4+5: Infer + Validate (concurrent per chunk) ───────────
-        let _retry_handler = RetryHandler::new(val_cfg.max_retries);
+        // ── Stages 4+5: Infer + Validate + Retry (concurrent per chunk) ───
         let sem = Arc::new(Semaphore::new(inf_cfg.batch.max_concurrent));
         let provider = Arc::clone(&self.provider);
         let schema = self.schema.clone();
@@ -118,7 +117,7 @@ impl Pipeline {
         let format_str = doc.format.to_string();
         let temperature = inf_cfg.temperature;
         let max_tokens_infer = inf_cfg.max_tokens;
-        let _max_retries = val_cfg.max_retries;
+        let max_retries = val_cfg.max_retries;
 
         let pb = ProgressBar::new(chunks.len() as u64);
         pb.set_style(
@@ -170,26 +169,41 @@ impl Pipeline {
                         Ok(provider_result) => {
                             result.prompt_tokens = provider_result.prompt_tokens;
                             result.completion_tokens = provider_result.completion_tokens;
-                            result.latency_ms =
-                                Some(chunk_start.elapsed().as_millis() as u64);
 
-                            // Stage 5: Validate
-                            let validation = validate(&provider_result.content);
+                            // ── Stage 5: Validate + Retry ─────────────────
+                            // RetryHandler attempts up to max_retries times with a
+                            // refined prompt when JSON extraction fails.
+                            let retry_handler = RetryHandler::new(max_retries);
+                            let validation = retry_handler
+                                .validate_and_retry(
+                                    &provider_result,
+                                    &chunk.text,
+                                    Some(&schema),
+                                    provider.as_ref().as_ref(),
+                                    temperature,
+                                    max_tokens_infer,
+                                )
+                                .await;
+
                             result.is_valid = validation.is_valid;
                             result.structured_output = validation.data;
                             result.validation_errors = validation.errors;
+                            result.latency_ms =
+                                Some(chunk_start.elapsed().as_millis() as u64);
 
-                            // If invalid, retry (without async retry for now — sync validation)
                             if !result.is_valid {
                                 warn!(
                                     chunk = chunk.chunk_index,
-                                    "Validation failed, result marked invalid"
+                                    retries = max_retries,
+                                    "Validation failed after all retries"
                                 );
                             }
                         }
                         Err(e) => {
                             warn!(chunk = chunk.chunk_index, error = %e, "Inference failed");
                             result.validation_errors = vec![e.to_string()];
+                            result.latency_ms =
+                                Some(chunk_start.elapsed().as_millis() as u64);
                         }
                     }
 
@@ -199,6 +213,7 @@ impl Pipeline {
             })
             .collect();
 
+        // Wait for all chunks to complete before finishing the progress bar
         let results_raw: Vec<ExtractionResult> = join_all(handles)
             .await
             .into_iter()
@@ -207,9 +222,11 @@ impl Pipeline {
 
         pb.finish_with_message("Done");
 
+        let valid_count = results_raw.iter().filter(|r| r.is_valid).count();
         let elapsed = start.elapsed();
         info!(
             results = results_raw.len(),
+            valid = valid_count,
             elapsed_ms = elapsed.as_millis(),
             "Pipeline complete"
         );
@@ -243,7 +260,6 @@ impl Pipeline {
             let schema = self.schema.clone();
             let task = self.task.clone();
             let config = Arc::clone(&self.config);
-            let _provider_name = self.config.inference.provider.clone();
             let parser_override = parser_override.map(|s| s.to_string());
             let model = model.map(|s| s.to_string());
             let pb = pb.clone();
@@ -276,17 +292,22 @@ impl Pipeline {
             }));
         }
 
-        pb.finish_with_message("Batch complete");
-
+        // ── Collect results BEFORE finishing the progress bar ─────────────
         let mut output = std::collections::HashMap::new();
         for handle in join_all(handles).await {
             if let Ok((name, result)) = handle {
                 match result {
-                    Ok(results) => { output.insert(name, results); }
-                    Err(e) => { warn!(file = name, error = %e, "File processing failed"); }
+                    Ok(results) => {
+                        output.insert(name, results);
+                    }
+                    Err(e) => {
+                        warn!(file = name, error = %e, "File processing failed");
+                    }
                 }
             }
         }
+
+        pb.finish_with_message("Batch complete");
 
         Ok(output)
     }
