@@ -6,12 +6,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::Semaphore;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 use crate::config::Settings;
-use crate::ingestion::{parse_file, ParsedDocument};
+use crate::ingestion::{parse_file, DocumentFormat, ParsedDocument};
 use crate::inference::{get_provider, GenerateRequest, LLMProvider};
-use crate::preprocessing::{normalize_text, Chunker};
+use crate::preprocessing::normalize_text;
 use crate::storage::ExtractionResult;
 use crate::validation::retry::RetryHandler;
 
@@ -33,7 +33,6 @@ impl Pipeline {
         })
     }
 
-    /// With a pre-built provider (for testing / custom providers).
     pub fn with_provider(
         schema: Value,
         task: &str,
@@ -48,7 +47,14 @@ impl Pipeline {
         }
     }
 
-    /// Process a single file through the 6-stage pipeline.
+    /// Process a single file through the pipeline:
+    ///
+    /// 1. **Ingest**      — auto-detect format and parse (code-controlled)
+    /// 2. **Preprocess**  — normalise unicode, strip boilerplate (code-controlled)
+    /// 3. **Aggregate**   — join the full document content; trim to context window
+    /// 4. **Structure**   — one LLM call with all content + schema → structured JSON
+    /// 5. **Validate**    — parse + retry if the LLM output is malformed
+    /// 6. **Return**      — single [`ExtractionResult`] for the whole document
     pub async fn run(
         &self,
         file_path: &Path,
@@ -57,8 +63,7 @@ impl Pipeline {
     ) -> Result<Vec<ExtractionResult>> {
         let start = Instant::now();
 
-        // ── Stage 1: Ingest ───────────────────────────────────────────────
-        debug!(path = %file_path.display(), "Ingesting file");
+        // ── Stage 1: Ingest (code-controlled) ────────────────────────────────
         let doc = parse_file(file_path, parser_override)?;
         info!(
             path = %file_path.display(),
@@ -70,7 +75,6 @@ impl Pipeline {
         self.run_on_document(doc, model, start).await
     }
 
-    /// Process a ParsedDocument (useful when ingestion is done externally).
     async fn run_on_document(
         &self,
         doc: ParsedDocument,
@@ -81,7 +85,7 @@ impl Pipeline {
         let inf_cfg = &self.config.inference;
         let val_cfg = &self.config.validation;
 
-        // ── Stage 2: Preprocess ───────────────────────────────────────────
+        // ── Stage 2: Preprocess (code-controlled) ─────────────────────────────
         let normalized = normalize_text(
             &doc.content,
             pre_cfg.normalize_unicode,
@@ -89,152 +93,114 @@ impl Pipeline {
             pre_cfg.collapse_whitespace,
         );
 
-        let chunker = Chunker::new(
-            &pre_cfg.chunking.strategy,
-            pre_cfg.chunking.max_tokens,
-            pre_cfg.chunking.overlap,
-        );
-        let chunks = chunker.chunk(&normalized, doc.id);
-        info!(chunks = chunks.len(), "Text chunked");
+        // ── Stage 3: Aggregate — trim full content to context window ──────────
+        // Reserve ~512 tokens for the system prompt + schema overhead.
+        let content_budget = inf_cfg.max_tokens.saturating_sub(512);
+        let content = trim_to_context(&normalized, content_budget);
 
-        // ── Stage 3: Route (model selection) ─────────────────────────────
+        // Capture fields we need after doc is consumed below.
+        let doc_id       = doc.id;  // Uuid is Copy
+        let source_path  = doc.source_path.clone();
+        let format_label = doc.format.to_string();
+        let doc_format   = doc.format.clone();
+
+        // ── Model selection ───────────────────────────────────────────────────
         let model_name = model
             .map(|s| s.to_string())
             .unwrap_or_else(|| match inf_cfg.provider.as_str() {
-                "openai" => inf_cfg.openai.model.clone(),
+                "openai"    => inf_cfg.openai.model.clone(),
                 "anthropic" => inf_cfg.anthropic.model.clone(),
-                "gemini" => inf_cfg.gemini.model.clone(),
-                "ollama" => inf_cfg.ollama.model.clone(),
-                _ => inf_cfg.vllm.model.clone(),
+                "gemini"    => inf_cfg.gemini.model.clone(),
+                "ollama"    => inf_cfg.ollama.model.clone(),
+                _           => inf_cfg.vllm.model.clone(),
             });
 
-        // ── Stages 4+5: Infer + Validate + Retry (concurrent per chunk) ───
-        let sem = Arc::new(Semaphore::new(inf_cfg.batch.max_concurrent));
-        let provider = Arc::clone(&self.provider);
-        let schema = self.schema.clone();
-        let task = self.task.clone();
-        let source_path = doc.source_path.clone();
-        let format_str = doc.format.to_string();
-        let temperature = inf_cfg.temperature;
-        let max_tokens_infer = inf_cfg.max_tokens;
-        let max_retries = val_cfg.max_retries;
+        // ── Stage 4: Single LLM call — structure the whole document ───────────
+        let system = build_system_prompt(&self.schema);
+        let prompt = build_extraction_prompt(&doc_format, &content);
 
-        let pb = ProgressBar::new(chunks.len() as u64);
-        pb.set_style(
-            ProgressStyle::with_template(
-                "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} chunks",
-            )
-            .unwrap()
-            .progress_chars("#>-"),
+        let req = GenerateRequest::new(&prompt)
+            .with_system(&system)
+            .with_schema(&self.schema)
+            .with_temperature(inf_cfg.temperature)
+            .with_max_tokens(inf_cfg.max_tokens)
+            .with_model(&model_name);
+
+        // Indeterminate spinner (one call, unknown duration)
+        let spinner = ProgressBar::new_spinner();
+        spinner.set_style(
+            ProgressStyle::with_template("{spinner:.cyan} {msg}")
+                .unwrap()
+                .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
         );
+        spinner.set_message(format!("Structuring {format_label} with {model_name}…"));
+        spinner.enable_steady_tick(std::time::Duration::from_millis(80));
 
-        let handles: Vec<_> = chunks
-            .into_iter()
-            .map(|chunk| {
-                let sem = Arc::clone(&sem);
-                let provider = Arc::clone(&provider);
-                let schema = schema.clone();
-                let task = task.clone();
-                let source_path = source_path.clone();
-                let format_str = format_str.clone();
-                let model_name = model_name.clone();
-                let doc_id = doc.id;
-                let pb = pb.clone();
+        let mut result = ExtractionResult::new(
+            doc_id,
+            0, // whole-document extraction: chunk_index = 0
+            source_path,
+            format_label.clone(),
+            self.task.clone(),
+        );
+        result.model_used = Some(model_name.clone());
 
-                tokio::spawn(async move {
-                    let _permit = sem.acquire().await.unwrap();
-                    let chunk_start = Instant::now();
+        let call_start = Instant::now();
 
-                    let prompt = format!(
-                        "Extract structured information from the following text:\n\n{}",
-                        chunk.text
+        match self.provider.generate(req).await {
+            Ok(provider_result) => {
+                result.prompt_tokens     = provider_result.prompt_tokens;
+                result.completion_tokens = provider_result.completion_tokens;
+
+                // ── Stage 5: Validate + retry ─────────────────────────────────
+                let retry = RetryHandler::new(val_cfg.max_retries);
+                let validation = retry
+                    .validate_and_retry(
+                        &provider_result,
+                        &content,
+                        Some(&self.schema),
+                        self.provider.as_ref().as_ref(),
+                        inf_cfg.temperature,
+                        inf_cfg.max_tokens,
+                    )
+                    .await;
+
+                result.is_valid          = validation.is_valid;
+                result.structured_output = validation.data;
+                result.validation_errors = validation.errors;
+                result.latency_ms        = Some(call_start.elapsed().as_millis() as u64);
+
+                if !result.is_valid {
+                    warn!(
+                        retries = val_cfg.max_retries,
+                        "Validation failed after all retries"
                     );
+                }
+            }
+            Err(e) => {
+                warn!(error = %e, "LLM inference failed");
+                result.validation_errors = vec![e.to_string()];
+                result.latency_ms = Some(call_start.elapsed().as_millis() as u64);
+            }
+        }
 
-                    let req = GenerateRequest::new(&prompt)
-                        .with_schema(&schema)
-                        .with_temperature(temperature)
-                        .with_max_tokens(max_tokens_infer)
-                        .with_model(&model_name);
+        let elapsed = result.latency_ms.unwrap_or(0);
+        spinner.finish_with_message(if result.is_valid {
+            format!("✓  {format_label} structured in {elapsed}ms")
+        } else {
+            format!("✗  structuring failed for {format_label}")
+        });
 
-                    let mut result = ExtractionResult::new(
-                        doc_id,
-                        chunk.chunk_index,
-                        source_path.clone(),
-                        format_str.clone(),
-                        task.clone(),
-                    );
-                    result.model_used = Some(model_name.clone());
-
-                    match provider.generate(req).await {
-                        Ok(provider_result) => {
-                            result.prompt_tokens = provider_result.prompt_tokens;
-                            result.completion_tokens = provider_result.completion_tokens;
-
-                            // ── Stage 5: Validate + Retry ─────────────────
-                            // RetryHandler attempts up to max_retries times with a
-                            // refined prompt when JSON extraction fails.
-                            let retry_handler = RetryHandler::new(max_retries);
-                            let validation = retry_handler
-                                .validate_and_retry(
-                                    &provider_result,
-                                    &chunk.text,
-                                    Some(&schema),
-                                    provider.as_ref().as_ref(),
-                                    temperature,
-                                    max_tokens_infer,
-                                )
-                                .await;
-
-                            result.is_valid = validation.is_valid;
-                            result.structured_output = validation.data;
-                            result.validation_errors = validation.errors;
-                            result.latency_ms =
-                                Some(chunk_start.elapsed().as_millis() as u64);
-
-                            if !result.is_valid {
-                                warn!(
-                                    chunk = chunk.chunk_index,
-                                    retries = max_retries,
-                                    "Validation failed after all retries"
-                                );
-                            }
-                        }
-                        Err(e) => {
-                            warn!(chunk = chunk.chunk_index, error = %e, "Inference failed");
-                            result.validation_errors = vec![e.to_string()];
-                            result.latency_ms =
-                                Some(chunk_start.elapsed().as_millis() as u64);
-                        }
-                    }
-
-                    pb.inc(1);
-                    result
-                })
-            })
-            .collect();
-
-        // Wait for all chunks to complete before finishing the progress bar
-        let results_raw: Vec<ExtractionResult> = join_all(handles)
-            .await
-            .into_iter()
-            .filter_map(|r| r.ok())
-            .collect();
-
-        pb.finish_with_message("Done");
-
-        let valid_count = results_raw.iter().filter(|r| r.is_valid).count();
-        let elapsed = start.elapsed();
         info!(
-            results = results_raw.len(),
-            valid = valid_count,
-            elapsed_ms = elapsed.as_millis(),
+            is_valid  = result.is_valid,
+            elapsed_ms = start.elapsed().as_millis(),
             "Pipeline complete"
         );
 
-        Ok(results_raw)
+        Ok(vec![result])
     }
 
-    /// Process multiple files concurrently with a semaphore.
+    /// Process multiple files with a concurrency limit (one LLM call per file).
     pub async fn run_many(
         &self,
         file_paths: &[PathBuf],
@@ -255,22 +221,22 @@ impl Pipeline {
         );
 
         for path in file_paths {
-            let sem = Arc::clone(&sem);
-            let path = path.clone();
+            let sem    = Arc::clone(&sem);
+            let path   = path.clone();
             let schema = self.schema.clone();
-            let task = self.task.clone();
+            let task   = self.task.clone();
             let config = Arc::clone(&self.config);
             let parser_override = parser_override.map(|s| s.to_string());
-            let model = model.map(|s| s.to_string());
-            let pb = pb.clone();
+            let model  = model.map(|s| s.to_string());
+            let pb     = pb.clone();
 
             handles.push(tokio::spawn(async move {
                 let _permit = sem.acquire().await.unwrap();
 
                 let provider = match get_provider(&config.inference) {
-                    Ok(p) => p,
+                    Ok(p)  => p,
                     Err(e) => {
-                        warn!(error = %e, "Failed to create provider for batch task");
+                        warn!(error = %e, "Failed to create provider");
                         pb.inc(1);
                         return (path.display().to_string(), Err(e));
                     }
@@ -292,23 +258,73 @@ impl Pipeline {
             }));
         }
 
-        // ── Collect results BEFORE finishing the progress bar ─────────────
         let mut output = std::collections::HashMap::new();
         for handle in join_all(handles).await {
             if let Ok((name, result)) = handle {
                 match result {
-                    Ok(results) => {
-                        output.insert(name, results);
-                    }
-                    Err(e) => {
-                        warn!(file = name, error = %e, "File processing failed");
-                    }
+                    Ok(results) => { output.insert(name, results); }
+                    Err(e)      => { warn!(file = name, error = %e, "File processing failed"); }
                 }
             }
         }
 
         pb.finish_with_message("Batch complete");
-
         Ok(output)
     }
+}
+
+// ── Prompt builders ───────────────────────────────────────────────────────────
+
+/// System prompt: tells the LLM its role and the exact JSON schema to follow.
+fn build_system_prompt(schema: &Value) -> String {
+    format!(
+        "You are a precise data extraction assistant. \
+         Read the entire document and extract ALL relevant structured information. \
+         Return ONLY a valid JSON object matching this schema:\n\n\
+         {schema}\n\n\
+         Rules:\n\
+         - Output only the JSON object — no markdown fences, no explanation\n\
+         - Use null for fields not found in the document\n\
+         - Capture every piece of data the document contains",
+        schema = serde_json::to_string_pretty(schema).unwrap_or_default()
+    )
+}
+
+/// User prompt: document type label + full preprocessed content.
+fn build_extraction_prompt(format: &DocumentFormat, content: &str) -> String {
+    format!(
+        "[Document type: {format}]\n\n\
+         --- BEGIN DOCUMENT ---\n\
+         {content}\n\
+         --- END DOCUMENT ---"
+    )
+}
+
+// ── Context window management ─────────────────────────────────────────────────
+
+/// Trim `text` so its estimated token count stays within `max_tokens`.
+///
+/// Uses a conservative 3 chars-per-token ratio (safer for non-ASCII text).
+/// Truncation is aligned to the nearest whitespace boundary.
+fn trim_to_context(text: &str, max_tokens: usize) -> String {
+    let char_limit = max_tokens * 3;
+    if text.len() <= char_limit {
+        return text.to_string();
+    }
+
+    warn!(
+        original_chars = text.len(),
+        limit = char_limit,
+        "Content exceeds estimated context window — truncating"
+    );
+
+    let truncated = &text[..char_limit];
+    let safe_end  = truncated
+        .rfind(|c: char| c.is_whitespace())
+        .unwrap_or(char_limit);
+
+    format!(
+        "{}\n\n[... document truncated to fit the model context window ...]",
+        truncated[..safe_end].trim_end()
+    )
 }
