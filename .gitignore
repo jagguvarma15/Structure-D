@@ -23,10 +23,14 @@ env/
 .DS_Store
 Thumbs.db
 
-# Project outputs
-output/
+# Project data — track the folders, ignore their contents
+output/*
+!output/.gitkeep
+data/*
+!data/.gitkeep
+input/*
+!input/.gitkeep
 logs/
-data/
 
 # Type checking / linting caches
 .mypy_cache/

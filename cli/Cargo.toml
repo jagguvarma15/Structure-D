@@ -56,8 +56,11 @@ colored = "2"
 # Interactive REPL (readline, history, line editing)
 rustyline = "14"
 
-# Interactive prompts (file/schema picker)
+# Interactive prompts (schema/format picker)
 dialoguer = "0.11"
+
+# Native file-picker dialog (macOS Finder, Windows Explorer, Linux GTK/portal)
+rfd = "0.15"
 
 # CSV output
 csv = "1"
