@@ -85,7 +85,7 @@ pub fn parse_file(path: &Path, parser_override: Option<&str>) -> Result<ParsedDo
         "xlsx" | "xls" | "ods" => office::parse_excel(path),
         "eml" | "email" | "msg" => email::parse(path),
         "txt" | "md" | "markdown" | "csv" | "tsv" | "log" | "rst" => text::parse(path),
-        "docx" => text::parse_as_text(path), // fallback: read as text
+        "docx" => office::parse_docx(path),
         other => bail!(
             "Unsupported file format '{}'. Supported: pdf, html, xlsx, eml, txt, md, csv",
             other
@@ -99,5 +99,5 @@ pub const SUPPORTED_FORMATS: &[(&str, &str)] = &[
     ("xlsx / xls", "Spreadsheets (calamine)"),
     ("eml", "Email files (mailparse)"),
     ("txt / md / csv / log", "Plain text, Markdown, CSV, log files"),
-    ("docx", "Word documents (text extraction)"),
+    ("docx", "Word documents (ZIP/XML parser)"),
 ];

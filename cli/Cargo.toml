@@ -70,3 +70,4 @@ lopdf = "0.34"
 calamine = { version = "0.25", features = ["dates"] }
 scraper = "0.20"
 mailparse = "0.15"
+zip = { version = "2", default-features = false, features = ["deflate"] }
