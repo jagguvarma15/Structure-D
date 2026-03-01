@@ -269,12 +269,184 @@ fn print_help() {
     println!();
 }
 
+// ── File / directory picker ───────────────────────────────────────────────────
+
+const SUPPORTED_EXTS: &[&str] = &[
+    "pdf", "docx", "xlsx", "xls", "pptx", "html", "htm", "eml", "txt", "md", "csv",
+];
+
+fn pick_and_run_extract() {
+    use dialoguer::{theme::ColorfulTheme, Select};
+
+    let theme = ColorfulTheme::default();
+    let cwd = std::env::current_dir().unwrap_or_default();
+
+    // Collect supported files in cwd
+    let mut files: Vec<String> = match std::fs::read_dir(&cwd) {
+        Ok(rd) => rd
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().is_file())
+            .filter(|e| {
+                e.path()
+                    .extension()
+                    .and_then(|x| x.to_str())
+                    .map(|x| SUPPORTED_EXTS.contains(&x.to_lowercase().as_str()))
+                    .unwrap_or(false)
+            })
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect(),
+        Err(_) => vec![],
+    };
+    files.sort();
+
+    if files.is_empty() {
+        println!(
+            "\n  {} No supported files found in {}\n  Add .pdf .docx .xlsx .html .eml or .txt files here first.\n",
+            "!".bright_yellow(),
+            cwd.display()
+        );
+        return;
+    }
+
+    println!();
+
+    // ── Step 1: pick file ─────────────────────────────────────────────────
+    let file_idx = match Select::with_theme(&theme)
+        .with_prompt("  Select file")
+        .items(&files)
+        .default(0)
+        .interact_opt()
+    {
+        Ok(Some(i)) => i,
+        _ => return,
+    };
+    let file = &files[file_idx];
+
+    // ── Step 2: pick schema ───────────────────────────────────────────────
+    let schemas: Vec<&str> = crate::schemas::SCHEMA_NAMES.to_vec();
+    let schema_idx = match Select::with_theme(&theme)
+        .with_prompt("  Schema")
+        .items(&schemas)
+        .default(0)
+        .interact_opt()
+    {
+        Ok(Some(i)) => i,
+        _ => return,
+    };
+    let schema = schemas[schema_idx];
+
+    // ── Step 3: pick output format ────────────────────────────────────────
+    let formats = ["jsonl", "csv"];
+    let fmt_idx = match Select::with_theme(&theme)
+        .with_prompt("  Output format")
+        .items(&formats)
+        .default(0)
+        .interact_opt()
+    {
+        Ok(Some(i)) => i,
+        _ => return,
+    };
+    let fmt = formats[fmt_idx];
+
+    // ── Run ───────────────────────────────────────────────────────────────
+    println!(
+        "\n  {} structure-d extract {} --schema {} --format {}\n",
+        "Running:".bright_cyan().bold(),
+        file.bright_white(),
+        schema.bright_white(),
+        fmt.bright_white(),
+    );
+
+    let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("structure-d"));
+    let _ = std::process::Command::new(exe)
+        .args(["extract", file, "--schema", schema, "--format", fmt])
+        .status();
+
+    println!();
+}
+
+fn pick_and_run_batch() {
+    use dialoguer::{theme::ColorfulTheme, Select};
+
+    let theme = ColorfulTheme::default();
+    let cwd = std::env::current_dir().unwrap_or_default();
+
+    // Collect non-hidden subdirectories + "." for current dir
+    let mut dirs: Vec<String> = match std::fs::read_dir(&cwd) {
+        Ok(rd) => rd
+            .filter_map(|e: std::io::Result<std::fs::DirEntry>| e.ok())
+            .filter(|e| e.path().is_dir())
+            .filter(|e| !e.file_name().to_string_lossy().starts_with('.'))
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect(),
+        Err(_) => vec![],
+    };
+    dirs.sort();
+    dirs.insert(0, ". (current directory)".to_string());
+
+    println!();
+
+    // ── Step 1: pick directory ────────────────────────────────────────────
+    let dir_idx = match Select::with_theme(&theme)
+        .with_prompt("  Select directory")
+        .items(&dirs)
+        .default(0)
+        .interact_opt()
+    {
+        Ok(Some(i)) => i,
+        _ => return,
+    };
+    let dir = if dir_idx == 0 { ".".to_string() } else { dirs[dir_idx].clone() };
+
+    // ── Step 2: pick schema ───────────────────────────────────────────────
+    let schemas: Vec<&str> = crate::schemas::SCHEMA_NAMES.to_vec();
+    let schema_idx = match Select::with_theme(&theme)
+        .with_prompt("  Schema")
+        .items(&schemas)
+        .default(0)
+        .interact_opt()
+    {
+        Ok(Some(i)) => i,
+        _ => return,
+    };
+    let schema = schemas[schema_idx];
+
+    // ── Step 3: pick output format ────────────────────────────────────────
+    let formats = ["jsonl", "csv"];
+    let fmt_idx = match Select::with_theme(&theme)
+        .with_prompt("  Output format")
+        .items(&formats)
+        .default(0)
+        .interact_opt()
+    {
+        Ok(Some(i)) => i,
+        _ => return,
+    };
+    let fmt = formats[fmt_idx];
+
+    // ── Run ───────────────────────────────────────────────────────────────
+    println!(
+        "\n  {} structure-d batch {} --schema {} --format {}\n",
+        "Running:".bright_cyan().bold(),
+        dir.bright_white(),
+        schema.bright_white(),
+        fmt.bright_white(),
+    );
+
+    let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("structure-d"));
+    let _ = std::process::Command::new(exe)
+        .args(["batch", &dir, "--schema", schema, "--format", fmt])
+        .status();
+
+    println!();
+}
+
 // ── Command dispatch ──────────────────────────────────────────────────────────
 
 fn dispatch(input: &str, settings: &crate::config::Settings) -> bool {
     let mut parts = input.splitn(2, ' ');
     let cmd = parts.next().unwrap_or("").to_lowercase();
-    let _rest = parts.next().unwrap_or("");
+    let rest = parts.next().unwrap_or("").trim();
 
     match cmd.as_str() {
         "exit" | "quit" | "q" => {
@@ -283,7 +455,6 @@ fn dispatch(input: &str, settings: &crate::config::Settings) -> bool {
         }
         "help" | "?" => print_help(),
         "clear" => {
-            // ANSI: clear screen + move cursor to top-left
             print!("\x1b[2J\x1b[H");
             print_banner();
         }
@@ -326,16 +497,32 @@ fn dispatch(input: &str, settings: &crate::config::Settings) -> bool {
                 "structure-d providers --check".bright_cyan()
             );
         }
-        "extract" | "batch" => {
-            println!(
-                "\n  {}\n",
-                format!(
-                    "Use: structure-d {} <{}> [options]  (run from your shell, not the REPL)",
-                    cmd,
-                    if cmd == "extract" { "file" } else { "dir" }
-                )
-                .dimmed()
-            );
+        // ── extract / batch: picker when no args, passthrough when args given ──
+        "extract" => {
+            if rest.is_empty() {
+                pick_and_run_extract();
+            } else {
+                let exe = std::env::current_exe()
+                    .unwrap_or_else(|_| std::path::PathBuf::from("structure-d"));
+                let _ = std::process::Command::new(exe)
+                    .arg("extract")
+                    .args(rest.split_whitespace())
+                    .status();
+                println!();
+            }
+        }
+        "batch" => {
+            if rest.is_empty() {
+                pick_and_run_batch();
+            } else {
+                let exe = std::env::current_exe()
+                    .unwrap_or_else(|_| std::path::PathBuf::from("structure-d"));
+                let _ = std::process::Command::new(exe)
+                    .arg("batch")
+                    .args(rest.split_whitespace())
+                    .status();
+                println!();
+            }
         }
         "" => {}
         other => {
