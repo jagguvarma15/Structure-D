@@ -262,7 +262,7 @@ fn print_help() {
         ("--schema <name>", "generic, key_value, table, entity, form, classification, summary, document_structure"),
         ("--task <type>",   "extraction, classification, summarisation, sentiment"),
         ("--model <name>",  "Model alias (default: auto-route)"),
-        ("--format <fmt>",  "jsonl or csv (default: jsonl)"),
+        ("--output-format <fmt>",  "jsonl or csv (default: jsonl)"),
         ("--output <dir>",  "Output directory"),
     ];
     for (opt, desc) in opts {
@@ -445,7 +445,7 @@ fn pick_and_run_upload() {
     let output = make_output_path(&file_path, schema, fmt);
 
     println!(
-        "\n  {} extract {}  --schema {}  --format {}  --output {}\n",
+        "\n  {} extract {}  --schema {}  --output-format {}  --output {}\n",
         "Running:".bright_cyan().bold(),
         file_path.display().to_string().bright_white(),
         schema.bright_white(),
@@ -460,7 +460,7 @@ fn pick_and_run_upload() {
             file_path.to_str().unwrap_or(""),
             "--schema",
             schema,
-            "--format",
+            "--output-format",
             fmt,
             "--output",
             output.to_str().unwrap_or("data/output/result"),
@@ -548,7 +548,7 @@ fn pick_and_run_batch() {
     let fmt = formats[fi];
 
     println!(
-        "\n  {} batch {}  --schema {}  --format {}\n",
+        "\n  {} batch {}  --schema {}  --output-format {}\n",
         "Running:".bright_cyan().bold(),
         dir.bright_white(),
         schema.bright_white(),
@@ -557,7 +557,7 @@ fn pick_and_run_batch() {
 
     let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("structure-d"));
     let _ = std::process::Command::new(exe)
-        .args(["batch", &dir, "--schema", schema, "--format", fmt])
+        .args(["batch", &dir, "--schema", schema, "--output-format", fmt])
         .status();
     println!();
 }
