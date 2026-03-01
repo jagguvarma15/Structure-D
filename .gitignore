@@ -23,13 +23,11 @@ env/
 .DS_Store
 Thumbs.db
 
-# Project data — track the folders, ignore their contents
-output/*
-!output/.gitkeep
-data/*
-!data/.gitkeep
-input/*
-!input/.gitkeep
+# Project data — track folders, ignore contents
+data/input/*
+!data/input/.gitkeep
+data/output/*
+!data/output/.gitkeep
 logs/
 
 # Type checking / linting caches

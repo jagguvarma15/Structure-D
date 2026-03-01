@@ -229,14 +229,15 @@ fn print_help() {
     println!("\n{}\n", "Commands".bold().underline());
 
     let cmds: &[(&str, &str, &str)] = &[
-        ("upload",  "",                  "Pick a file from input/ or data/ and extract"),
-        ("extract", "<file> [options]",  "Extract a specific file (or pick if no args)"),
-        ("batch",   "<dir> [options]",   "Batch-extract from all files in a directory"),
-        ("models",  "",                  "Show registered models"),
+        ("upload",     "",                 "Open file picker → extract → save to data/output/"),
+        ("configure",  "",                 "Set LLM provider and API key"),
+        ("extract",  "<file> [options]",  "Extract a specific file (or pick if no args)"),
+        ("batch",    "<dir> [options]",   "Batch-extract from all files in a directory"),
+        ("models",   "",                  "Show registered models"),
         ("schemas", "",                  "Show built-in extraction schemas"),
         ("formats", "",                  "Show supported input file formats"),
         ("config",  "",                  "Show current configuration"),
-        ("status",  "",                  "Check provider connectivity"),
+        ("status",  "[--check]",          "Show provider status (--check to ping)"),
         ("clear",   "",                  "Clear the screen"),
         ("version", "",                  "Show version info"),
         ("help",    "",                  "Show this help message"),
@@ -276,38 +277,20 @@ const SUPPORTED_EXTS: &[&str] = &[
     "pdf", "docx", "xlsx", "xls", "pptx", "html", "htm", "eml", "txt", "md", "csv",
 ];
 
-/// Scan `input/`, `data/`, and cwd for supported files.
+/// Scan `data/input/` for supported files.
 /// Returns (display_label, absolute_path) pairs sorted by label.
 fn collect_input_files() -> Vec<(String, std::path::PathBuf)> {
     let cwd = std::env::current_dir().unwrap_or_default();
+    let input_dir = cwd.join("data").join("input");
     let mut files: Vec<(String, std::path::PathBuf)> = Vec::new();
 
-    for dir_name in &["input", "data", "."] {
-        let dir = cwd.join(dir_name);
-        if !dir.is_dir() {
-            continue;
-        }
-        if let Ok(rd) = std::fs::read_dir(&dir) {
-            for entry in rd.filter_map(|e| e.ok()) {
-                let path = entry.path();
-                if !path.is_file() {
-                    continue;
-                }
-                let ext = path
-                    .extension()
-                    .and_then(|x| x.to_str())
-                    .unwrap_or("")
-                    .to_lowercase();
-                if !SUPPORTED_EXTS.contains(&ext.as_str()) {
-                    continue;
-                }
-                let label = if *dir_name == "." {
-                    entry.file_name().to_string_lossy().to_string()
-                } else {
-                    format!("{}/{}", dir_name, entry.file_name().to_string_lossy())
-                };
-                files.push((label, path));
-            }
+    if let Ok(rd) = std::fs::read_dir(&input_dir) {
+        for entry in rd.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if !path.is_file() { continue; }
+            let ext = path.extension().and_then(|x| x.to_str()).unwrap_or("").to_lowercase();
+            if !SUPPORTED_EXTS.contains(&ext.as_str()) { continue; }
+            files.push((entry.file_name().to_string_lossy().to_string(), path));
         }
     }
 
@@ -315,15 +298,95 @@ fn collect_input_files() -> Vec<(String, std::path::PathBuf)> {
     files
 }
 
-/// Build output path: `output/<stem>_<schema>_<YYYY-MM-DD_HH-MM-SS>.<ext>`
+/// Build output path: `data/output/<stem>_<schema>_<YYYY-MM-DD_HH-MM-SS>.<ext>`
 fn make_output_path(file: &std::path::Path, schema: &str, fmt: &str) -> std::path::PathBuf {
     use chrono::Local;
     let stem = file.file_stem().and_then(|s| s.to_str()).unwrap_or("document");
     let ts = Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
     let name = format!("{}_{}_{}.{}", stem, schema, ts, fmt);
-    let out_dir = std::env::current_dir().unwrap_or_default().join("output");
+    let out_dir = std::env::current_dir().unwrap_or_default().join("data").join("output");
     let _ = std::fs::create_dir_all(&out_dir);
     out_dir.join(name)
+}
+
+/// Save provider + API key to ~/.structure-d/config.yaml
+fn configure_provider() {
+    use dialoguer::{theme::ColorfulTheme, Input, Select};
+    let theme = ColorfulTheme::default();
+
+    println!();
+
+    let providers = ["openai", "anthropic", "gemini", "ollama", "vllm"];
+    let pi = match Select::with_theme(&theme)
+        .with_prompt("  Provider")
+        .items(&providers)
+        .default(0)
+        .interact_opt()
+    {
+        Ok(Some(i)) => i,
+        _ => return,
+    };
+    let provider = providers[pi];
+
+    // API key prompt (not needed for ollama/vllm)
+    let api_key: Option<String> = match provider {
+        "openai" | "anthropic" | "gemini" => {
+            let env_var = match provider {
+                "openai"    => "OPENAI_API_KEY",
+                "anthropic" => "ANTHROPIC_API_KEY",
+                _           => "GEMINI_API_KEY",
+            };
+            let placeholder = std::env::var(env_var).unwrap_or_default();
+            let hint = if placeholder.is_empty() {
+                format!("  API key (or set {} env var)", env_var)
+            } else {
+                format!("  API key [env {} already set, press Enter to keep]", env_var)
+            };
+            let key: String = Input::with_theme(&theme)
+                .with_prompt(&hint)
+                .allow_empty(true)
+                .interact_text()
+                .unwrap_or_default();
+            if key.is_empty() && !placeholder.is_empty() {
+                None // keep env var
+            } else if key.is_empty() {
+                println!("  {} No API key provided — skipped.\n", "!".bright_yellow());
+                return;
+            } else {
+                Some(key)
+            }
+        }
+        _ => None,
+    };
+
+    // Write ~/.structure-d/config.yaml
+    let config_dir = dirs::home_dir()
+        .unwrap_or_default()
+        .join(".structure-d");
+    let _ = std::fs::create_dir_all(&config_dir);
+    let config_path = config_dir.join("config.yaml");
+
+    let key_line = match (provider, &api_key) {
+        ("openai",    Some(k)) => format!("  openai:\n    api_key: \"{}\"\n", k),
+        ("anthropic", Some(k)) => format!("  anthropic:\n    api_key: \"{}\"\n", k),
+        ("gemini",    Some(k)) => format!("  gemini:\n    api_key: \"{}\"\n", k),
+        _ => String::new(),
+    };
+
+    let yaml = format!(
+        "# Structure-D user config — generated by `configure`\ninference:\n  provider: \"{}\"\n{}",
+        provider, key_line
+    );
+
+    match std::fs::write(&config_path, &yaml) {
+        Ok(_) => println!(
+            "\n  {} Saved to {}\n  {} Restart the REPL for changes to take effect.\n",
+            "✓".bright_green().bold(),
+            config_path.display().to_string().dimmed(),
+            "→".bright_cyan(),
+        ),
+        Err(e) => println!("\n  {} Could not save config: {}\n", "✗".red(), e),
+    }
 }
 
 /// Open a native file-picker dialog.
@@ -391,7 +454,7 @@ fn pick_and_run_upload() {
     );
 
     let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("structure-d"));
-    match std::process::Command::new(&exe)
+    let status = std::process::Command::new(&exe)
         .args([
             "extract",
             file_path.to_str().unwrap_or(""),
@@ -400,16 +463,21 @@ fn pick_and_run_upload() {
             "--format",
             fmt,
             "--output",
-            output.to_str().unwrap_or("output/result"),
+            output.to_str().unwrap_or("data/output/result"),
         ])
-        .status()
-    {
+        .status();
+
+    match status {
         Ok(s) if s.success() => println!(
-            "  {} Saved → {}\n",
+            "\n  {} Saved → {}\n",
             "✓".bright_green().bold(),
             output.display()
         ),
-        _ => {}
+        _ => println!(
+            "\n  {} Extraction failed. Run {} to set your LLM provider and API key.\n",
+            "✗".red().bold(),
+            "configure".bright_cyan()
+        ),
     }
     println!();
 }
@@ -544,14 +612,22 @@ fn dispatch(input: &str, settings: &crate::config::Settings) -> bool {
             println!("  Log level {}\n", settings.monitoring.log_level.bright_cyan());
         }
         "status" => {
-            println!(
-                "\n  {} Run {} to test provider connectivity.\n",
-                "Tip:".bright_yellow().bold(),
-                "structure-d providers --check".bright_cyan()
-            );
+            let exe = std::env::current_exe()
+                .unwrap_or_else(|_| std::path::PathBuf::from("structure-d"));
+            let rest = rest.trim();
+            if rest == "--check" || rest == "-c" {
+                let _ = std::process::Command::new(exe)
+                    .args(["providers", "--check"])
+                    .status();
+            } else {
+                let _ = std::process::Command::new(exe)
+                    .arg("providers")
+                    .status();
+            }
         }
-        // ── upload / extract / batch ──────────────────────────────────────────
+        // ── upload / configure / extract / batch ─────────────────────────────
         "upload" | "u" => pick_and_run_upload(),
+        "configure" | "config set" => configure_provider(),
         "extract" => {
             if rest.is_empty() {
                 pick_and_run_upload();
