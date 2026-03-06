@@ -47,7 +47,7 @@ class BaseIndex(abc.ABC):
     def as_query_engine(
         self,
         *,
-        llm_client: Any = None,
+        provider: Any = None,
         response_mode: str = "simple",
         top_k: int = 5,
         **kwargs: Any,
@@ -58,7 +58,7 @@ class BaseIndex(abc.ABC):
         retriever = self.as_retriever(top_k=top_k, **kwargs)
         return QueryEngine(
             retriever=retriever,
-            llm_client=llm_client,
+            provider=provider,
             response_mode=response_mode,
             top_k=top_k,
         )
