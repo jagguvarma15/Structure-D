@@ -203,7 +203,7 @@ reader = DocumentReader()
 nodes = await reader.load_and_chunk(Path("doc.pdf"))
 index = VectorStoreIndex(vector_store=ChromaVectorStore(), embedding_service=EmbeddingService())
 await index.insert_nodes(nodes)
-engine = index.as_query_engine(llm_client=client)
+engine = index.as_query_engine(provider=client)
 answer = await engine.query("What is the total amount?", model="llama-3.1-8b")
 ```
 
@@ -211,7 +211,7 @@ answer = await engine.query("What is the total amount?", model="llama-3.1-8b")
 ```python
 pipeline = Pipeline(schema_cls=MySchema, vector_store=ChromaVectorStore())
 index = await pipeline.build_index(Path("doc.pdf"), index_type="vector")
-engine = index.as_query_engine(llm_client=pipeline.client)
+engine = index.as_query_engine(provider=pipeline.client)
 answer = await engine.query("Your question?", model="...")
 ```
 
