@@ -47,7 +47,7 @@ class VectorStoreRetriever(BaseRetriever):
             doc_text = r.get("document", "")
             if self.similarity_threshold is not None:
                 dist = r.get("distance")
-                if dist is not None and dist < (1 - self.similarity_threshold):
+                if dist is not None and dist > (1 - self.similarity_threshold):
                     continue
             nodes.append(
                 Node(

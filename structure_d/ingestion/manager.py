@@ -8,6 +8,7 @@ from pathlib import Path
 import structlog
 
 from structure_d.config import get_settings
+from structure_d.exceptions import ParserError
 from structure_d.ingestion.audio import TranscriptParser
 from structure_d.ingestion.base import BaseParser, ParserRegistry
 from structure_d.ingestion.connectors import BaseConnector, LocalConnector
