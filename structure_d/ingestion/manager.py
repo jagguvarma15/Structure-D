@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import tempfile
 from pathlib import Path
 
@@ -111,13 +112,16 @@ class IngestionManager:
         self,
         file_paths: list[Path],
         parser_name: str | None = None,
+        max_concurrent: int = 4,
     ) -> list[ParsedDocument]:
-        """Parse multiple files sequentially (async per-file)."""
-        results: list[ParsedDocument] = []
-        for fp in file_paths:
-            doc = await self.ingest(fp, parser_name=parser_name)
-            results.append(doc)
-        return results
+        """Parse multiple files concurrently, bounded by *max_concurrent*."""
+        semaphore = asyncio.Semaphore(max_concurrent)
+
+        async def _ingest_one(fp: Path) -> ParsedDocument:
+            async with semaphore:
+                return await self.ingest(fp, parser_name=parser_name)
+
+        return list(await asyncio.gather(*(_ingest_one(fp) for fp in file_paths)))
 
     async def ingest_from_connector(
         self,

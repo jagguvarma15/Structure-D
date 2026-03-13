@@ -151,17 +151,16 @@ class Pipeline:
 
         # ── RAG (optional) ────────────────────────────────────────────────────
         self.enable_rag = enable_rag if enable_rag is not None else settings.retrieval.enabled
-        self.rag_pipeline: RAGPipeline | None = None
-        if self.enable_rag and vector_store:
-            embedding_service = EmbeddingService()
-            self.rag_pipeline = RAGPipeline(
-                vector_store=vector_store,
-                embedding_service=embedding_service,
-                provider=self.provider,
-            )
-
         self._vector_store = vector_store
         self._embedding_service = EmbeddingService() if (vector_store or enable_rag) else None
+
+        self.rag_pipeline: RAGPipeline | None = None
+        if self.enable_rag and vector_store and self._embedding_service:
+            self.rag_pipeline = RAGPipeline(
+                vector_store=vector_store,
+                embedding_service=self._embedding_service,
+                provider=self.provider,
+            )
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -240,88 +239,90 @@ class Pipeline:
             logger.debug("ingestion_complete", elapsed_ms=round(ingest_elapsed, 1))
             source_format = doc.metadata.format
 
-        # 2. Pre-process
-        text = normalize_text(
-            doc.text,
-            normalize_unicode=settings.preprocessing.normalize_unicode,
-            strip_boilerplate=settings.preprocessing.strip_boilerplate,
-        )
-        chunks: list[TextChunk] = self.chunker.chunk(text, document_id=doc.metadata.document_id)
-
-        for chunk in chunks:
-            chunk.metadata.source_format = source_format
-
-        logger.info("pipeline_chunked", chunks=len(chunks), format=source_format.value)
-        self.metrics.record_chunks(len(chunks))
-
-        # 2.5. Index chunks for RAG (if enabled)
-        if self.rag_pipeline:
-            try:
-                await self.rag_pipeline.index_chunks(chunks)
-                logger.info("rag_indexed", chunks=len(chunks))
-            except Exception as e:
-                logger.warning("rag_indexing_failed", error=str(e))
-
-        # 3. Route (vLLM only – other providers use their configured model)
-        if model is None and self._routing_enabled:
-            avg_tokens = sum(c.metadata.token_count for c in chunks) // max(len(chunks), 1)
-            prefer_mm = source_format in (DocumentFormat.IMAGE,)
-            entry = self.router.route(
-                self.task,
-                input_tokens=avg_tokens,
-                prefer_multimodal=prefer_mm,
+            # 2. Pre-process
+            text = normalize_text(
+                doc.text,
+                normalize_unicode=settings.preprocessing.normalize_unicode,
+                strip_boilerplate=settings.preprocessing.strip_boilerplate,
             )
-            model = entry.name
-
-        # 4. Infer
-        results = await self.batch_processor.process(chunks, model=model)
-
-        # 5. Validate + retry
-        validated: list[ExtractionResult] = []
-        for result, chunk in zip(results, chunks):
-            result.source_format = source_format
-            validate_start = time.monotonic()
-            result = await self.retry_handler.validate_and_retry(
-                result, original_text=chunk.text, model=model
+            chunks: list[TextChunk] = self.chunker.chunk(
+                text, document_id=doc.metadata.document_id,
             )
-            validate_elapsed = (time.monotonic() - validate_start) * 1000
-            if not result.is_valid:
-                self.metrics.record_validation_failure(1)
-                logger.debug("validation_failed", elapsed_ms=round(validate_elapsed, 1))
 
-            if result.token_usage:
-                self.metrics.record_tokens(
-                    prompt=result.token_usage.get("prompt_tokens", 0),
-                    completion=result.token_usage.get("completion_tokens", 0),
+            for chunk in chunks:
+                chunk.metadata.source_format = source_format
+
+            logger.info("pipeline_chunked", chunks=len(chunks), format=source_format.value)
+            self.metrics.record_chunks(len(chunks))
+
+            # 2.5. Index chunks for RAG (if enabled)
+            if self.rag_pipeline:
+                try:
+                    await self.rag_pipeline.index_chunks(chunks)
+                    logger.info("rag_indexed", chunks=len(chunks))
+                except Exception as e:
+                    logger.warning("rag_indexing_failed", error=str(e))
+
+            # 3. Route (vLLM only – other providers use their configured model)
+            if model is None and self._routing_enabled:
+                avg_tokens = sum(c.metadata.token_count for c in chunks) // max(len(chunks), 1)
+                prefer_mm = source_format in (DocumentFormat.IMAGE,)
+                entry = self.router.route(
+                    self.task,
+                    input_tokens=avg_tokens,
+                    prefer_multimodal=prefer_mm,
                 )
-            if result.latency_ms:
-                self.metrics.record_inference_latency(result.latency_ms / 1000.0)
+                model = entry.name
 
-            validated.append(result)
+            # 4. Infer
+            results = await self.batch_processor.process(chunks, model=model)
 
-        # 6. Store
-        fmt = save_format or settings.storage.default_format
-        fname = output_filename or f"{file_path.stem}_output"
-        if fmt == "jsonl":
-            self.jsonl_writer.write(validated, f"{fname}.jsonl")
-        elif fmt == "csv":
-            self.csv_writer.write(validated, f"{fname}.csv")
+            # 5. Validate + retry
+            validated: list[ExtractionResult] = []
+            for result, chunk in zip(results, chunks):
+                result.source_format = source_format
+                validate_start = time.monotonic()
+                result = await self.retry_handler.validate_and_retry(
+                    result, original_text=chunk.text, model=model
+                )
+                validate_elapsed = (time.monotonic() - validate_start) * 1000
+                if not result.is_valid:
+                    self.metrics.record_validation_failure(1)
+                    logger.debug("validation_failed", elapsed_ms=round(validate_elapsed, 1))
 
-        elapsed = (time.monotonic() - t0) * 1000
-        valid_count = sum(1 for r in validated if r.is_valid)
-        self.metrics.record_inference_latency(elapsed / 1000.0)
+                if result.token_usage:
+                    self.metrics.record_tokens(
+                        prompt=result.token_usage.get("prompt_tokens", 0),
+                        completion=result.token_usage.get("completion_tokens", 0),
+                    )
+                if result.latency_ms:
+                    self.metrics.record_inference_latency(result.latency_ms / 1000.0)
 
-        logger.info(
-            "pipeline_complete",
-            file=str(file_path),
-            format=source_format.value,
-            chunks=len(chunks),
-            results=len(validated),
-            valid=valid_count,
-            elapsed_ms=round(elapsed, 1),
-        )
+                validated.append(result)
 
-        return validated
+            # 6. Store
+            fmt = save_format or settings.storage.default_format
+            fname = output_filename or f"{file_path.stem}_output"
+            if fmt == "jsonl":
+                self.jsonl_writer.write(validated, f"{fname}.jsonl")
+            elif fmt == "csv":
+                self.csv_writer.write(validated, f"{fname}.csv")
+
+            elapsed = (time.monotonic() - t0) * 1000
+            valid_count = sum(1 for r in validated if r.is_valid)
+            self.metrics.record_inference_latency(elapsed / 1000.0)
+
+            logger.info(
+                "pipeline_complete",
+                file=str(file_path),
+                format=source_format.value,
+                chunks=len(chunks),
+                results=len(validated),
+                valid=valid_count,
+                elapsed_ms=round(elapsed, 1),
+            )
+
+            return validated
 
     async def run_many(
         self,
