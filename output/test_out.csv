@@ -1,2 +1,0 @@
-result_id,document_id,chunk_id,source_format,task,model_used,is_valid,latency_ms,pairs
-b0475eebd6c14f5195e16ed3407a16dc,167ca978e708433ea948d1c046c0b780,7ee5661845304e16a364ea137975b711,plain_text,extraction,fake-model,True,0.0,"[{""key"": ""name"", ""value"": ""Alice"", ""confidence"": null, ""page"": null}]"

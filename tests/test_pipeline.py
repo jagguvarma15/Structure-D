@@ -56,10 +56,13 @@ async def test_pipeline_run_populates_source_format(sample_text_file: Path, tmp_
 async def test_pipeline_run_saves_jsonl(sample_text_file: Path, tmp_path: Path):
     """Pipeline should write JSONL when save_format='jsonl'."""
     pipeline = _build_pipeline(tmp_path)
+    # Redirect output to tmp_path so previous runs cannot pollute line count.
+    pipeline.jsonl_writer.output_dir = tmp_path
+    unique_name = f"test_out_{id(pipeline)}"
     results = await pipeline.run(
-        sample_text_file, save_format="jsonl", output_filename="test_out",
+        sample_text_file, save_format="jsonl", output_filename=unique_name,
     )
-    outfile = Path(pipeline.jsonl_writer.output_dir / "test_out.jsonl")
+    outfile = tmp_path / f"{unique_name}.jsonl"
     assert outfile.exists()
     lines = outfile.read_text().strip().splitlines()
     assert len(lines) == len(results)
