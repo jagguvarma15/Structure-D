@@ -5,11 +5,17 @@ from __future__ import annotations
 import abc
 import json
 from dataclasses import dataclass, field
-from typing import Any, Type
+from typing import TYPE_CHECKING, Any, Type
 
+import structlog
 from pydantic import BaseModel
 
 from structure_d.exceptions import InferenceError
+
+if TYPE_CHECKING:
+    from structure_d.config import Settings
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass
@@ -636,6 +642,112 @@ class VLLMProvider(BaseLLMProvider):
             raise InferenceError(f"vLLM API error: {e}") from e
 
 
+# ── Fallback provider ─────────────────────────────────────────────────────────
+
+
+class FallbackProvider(BaseLLMProvider):
+    """
+    Wraps a *primary* and a *fallback* provider.
+
+    Every call is attempted on ``primary`` first.  If ``primary`` raises an
+    :class:`~structure_d.exceptions.InferenceError` (e.g. vLLM not reachable,
+    network timeout, HTTP 5xx), the same call is transparently retried on
+    ``fallback`` and a warning is logged.
+
+    Typical use-case::
+
+        # Try your local vLLM server; fall back to Anthropic when it is down.
+        provider = FallbackProvider(
+            primary=VLLMProvider(),
+            fallback=AnthropicProvider(),
+        )
+        pipeline = Pipeline(schema_cls=MySchema, provider=provider)
+
+    The fallback is **not** triggered for validation or Pydantic errors – only
+    for :class:`InferenceError` raised by the underlying HTTP/SDK call.
+    """
+
+    def __init__(
+        self,
+        primary: BaseLLMProvider,
+        fallback: BaseLLMProvider,
+    ) -> None:
+        self.primary = primary
+        self.fallback = fallback
+
+    async def generate(
+        self,
+        prompt: str,
+        schema: Type[BaseModel],
+        system_prompt: str | None = None,
+        temperature: float = 0.0,
+        max_tokens: int = 2048,
+        model: str | None = None,
+        **kwargs: Any,
+    ) -> ProviderResult:
+        try:
+            return await self.primary.generate(
+                prompt=prompt,
+                schema=schema,
+                system_prompt=system_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                model=model,
+                **kwargs,
+            )
+        except InferenceError as exc:
+            # Primary failed – log and hand off to the fallback provider.
+            logger.warning(
+                "primary_provider_failed_falling_back",
+                primary=type(self.primary).__name__,
+                fallback=type(self.fallback).__name__,
+                error=str(exc),
+            )
+            return await self.fallback.generate(
+                prompt=prompt,
+                schema=schema,
+                system_prompt=system_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                model=model,
+                **kwargs,
+            )
+
+    async def generate_text(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        temperature: float = 0.0,
+        max_tokens: int = 2048,
+        model: str | None = None,
+        **kwargs: Any,
+    ) -> str:
+        try:
+            return await self.primary.generate_text(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                model=model,
+                **kwargs,
+            )
+        except InferenceError as exc:
+            logger.warning(
+                "primary_provider_failed_falling_back",
+                primary=type(self.primary).__name__,
+                fallback=type(self.fallback).__name__,
+                error=str(exc),
+            )
+            return await self.fallback.generate_text(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                model=model,
+                **kwargs,
+            )
+
+
 # ── Factory ───────────────────────────────────────────────────────────────────
 
 _PROVIDERS: dict[str, type[BaseLLMProvider]] = {
@@ -659,3 +771,82 @@ def get_provider(name: str, **kwargs: object) -> BaseLLMProvider:
     if cls is None:
         raise ValueError(f"Unknown provider: {name!r}. Available: {list(_PROVIDERS)}")
     return cls(**kwargs)  # type: ignore[arg-type]
+
+
+def _build_provider_from_config(name: str, settings: Settings) -> BaseLLMProvider:
+    """Build a single concrete provider from the named config section."""
+    pc = settings.inference.provider
+    if name == "vllm":
+        return VLLMProvider(
+            api_base=pc.vllm.api_base,
+            api_key=pc.vllm.api_key,
+        )
+    if name == "openai":
+        return OpenAIProvider(
+            api_key=pc.openai.api_key,
+            model=pc.openai.model,
+            base_url=pc.openai.base_url,
+        )
+    if name == "anthropic":
+        return AnthropicProvider(
+            api_key=pc.anthropic.api_key,
+            model=pc.anthropic.model,
+        )
+    if name == "gemini":
+        return GeminiProvider(
+            api_key=pc.gemini.api_key,
+            model=pc.gemini.model,
+        )
+    if name == "ollama":
+        return OllamaProvider(
+            base_url=pc.ollama.base_url,
+            model=pc.ollama.model,
+        )
+    raise ValueError(f"Unknown provider name in config: {name!r}")
+
+
+def resolve_provider(settings: Settings) -> BaseLLMProvider:
+    """
+    Build the configured LLM provider (or a :class:`FallbackProvider` chain)
+    from ``settings.inference.provider``.
+
+    Reads two config keys:
+
+    * ``inference.provider.provider`` – primary provider (default: ``"vllm"``).
+    * ``inference.provider.fallback_provider`` – optional fallback provider name.
+
+    When ``fallback_provider`` is set (e.g. ``"anthropic"``), returns a
+    :class:`FallbackProvider` that transparently falls back whenever the
+    primary raises an :class:`~structure_d.exceptions.InferenceError`.
+
+    Example (``configs/default.yaml``)::
+
+        inference:
+          provider:
+            provider: "vllm"
+            fallback_provider: "anthropic"   # used when vLLM is unreachable
+            anthropic:
+              model: "claude-3-5-sonnet-20241022"
+              api_key: null                  # reads ANTHROPIC_API_KEY from env
+
+    Example (Python)::
+
+        from structure_d.config import get_settings
+        from structure_d.inference.providers import resolve_provider
+
+        provider = resolve_provider(get_settings())
+        pipeline = Pipeline(schema_cls=MySchema, provider=provider)
+    """
+    primary = _build_provider_from_config(settings.inference.provider.provider, settings)
+
+    fallback_name = settings.inference.provider.fallback_provider
+    if not fallback_name:
+        return primary
+
+    fallback = _build_provider_from_config(fallback_name, settings)
+    logger.info(
+        "provider_fallback_configured",
+        primary=settings.inference.provider.provider,
+        fallback=fallback_name,
+    )
+    return FallbackProvider(primary=primary, fallback=fallback)
