@@ -155,6 +155,9 @@ class ProviderConfig(BaseModel):
     """Configuration for LLM providers."""
 
     provider: Literal["vllm", "openai", "anthropic", "gemini", "ollama"] = "vllm"
+    # When set, the named provider is used as a transparent fallback whenever
+    # the primary provider raises an InferenceError (e.g. vLLM not reachable).
+    fallback_provider: Literal["vllm", "openai", "anthropic", "gemini", "ollama"] | None = None
     vllm: VLLMConfig = Field(default_factory=VLLMConfig)
     openai: OpenAIProviderConfig = Field(default_factory=OpenAIProviderConfig)
     anthropic: AnthropicProviderConfig = Field(default_factory=AnthropicProviderConfig)

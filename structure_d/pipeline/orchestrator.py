@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from structure_d.config import get_settings, load_settings
 from structure_d.inference.batch import BatchProcessor
-from structure_d.inference.providers import BaseLLMProvider, VLLMProvider
+from structure_d.inference.providers import BaseLLMProvider, VLLMProvider, resolve_provider
 from structure_d.ingestion.manager import IngestionManager
 from structure_d.models.registry import ModelRegistry
 from structure_d.models.router import ModelRouter
@@ -106,8 +106,11 @@ class Pipeline:
         self.task = task
 
         # ── Provider ──────────────────────────────────────────────────────────
-        # Default to vLLM so existing deployments keep working unchanged.
-        self.provider: BaseLLMProvider = provider or VLLMProvider()
+        # When no explicit provider is given, resolve one from config.
+        # This respects inference.provider.provider and, when set,
+        # inference.provider.fallback_provider — so e.g. vLLM → Anthropic
+        # fallback is activated without any code change.
+        self.provider: BaseLLMProvider = provider or resolve_provider(settings)
 
         # ── Ingestion ─────────────────────────────────────────────────────────
         self.ingestion = ingestion_manager or IngestionManager()

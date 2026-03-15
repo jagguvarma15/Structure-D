@@ -61,6 +61,10 @@ models:
 inference:
   provider:
     provider: "vllm"             # vllm | openai | anthropic | gemini | ollama
+    # Optional: if the primary provider raises an error (e.g. vLLM not running),
+    # requests are transparently retried on this fallback provider.
+    # Set ANTHROPIC_API_KEY (or the relevant env var) and uncomment to enable.
+    fallback_provider: null      # null | vllm | openai | anthropic | gemini | ollama
     vllm:
       api_base: "http://localhost:8000/v1"
       api_key: "EMPTY"            # vLLM uses a dummy key by default
