@@ -142,74 +142,202 @@ fn print_init() {
     }
 }
 
+// ── Provider readiness assessment ────────────────────────────────────────────
+
+#[derive(PartialEq)]
+enum Readiness {
+    /// API key confirmed present in config or env var.
+    Ready,
+    /// Config name is set but key / endpoint is not confirmed.
+    Unverified,
+    /// No key and no meaningful configuration — user action required.
+    NotConfigured,
+}
+
+struct ProviderInfo {
+    readiness: Readiness,
+    /// One-line summary for the "Provider" row (plain text).
+    provider_desc: String,
+    /// One-line summary for the "Model" row (plain text).
+    model_desc: String,
+}
+
+/// Check whether the user has a personal config file saved by `configure`.
+fn user_config_exists() -> bool {
+    dirs::home_dir()
+        .map(|h| h.join(".structure-d").join("config.yaml").exists())
+        .unwrap_or(false)
+}
+
+/// Assess the configured provider against actual credentials / defaults.
+fn assess_provider(settings: &crate::config::Settings) -> ProviderInfo {
+    match settings.inference.provider.as_str() {
+        "openai" => {
+            let has_key = settings.inference.openai.api_key.is_some()
+                || std::env::var("OPENAI_API_KEY").is_ok();
+            ProviderInfo {
+                readiness: if has_key { Readiness::Ready } else { Readiness::NotConfigured },
+                provider_desc: if has_key {
+                    "openai · API key set".into()
+                } else {
+                    "openai · no API key — run 'configure'".into()
+                },
+                model_desc: settings.inference.openai.model.clone(),
+            }
+        }
+        "anthropic" => {
+            let has_key = settings.inference.anthropic.api_key.is_some()
+                || std::env::var("ANTHROPIC_API_KEY").is_ok();
+            ProviderInfo {
+                readiness: if has_key { Readiness::Ready } else { Readiness::NotConfigured },
+                provider_desc: if has_key {
+                    "anthropic · API key set".into()
+                } else {
+                    "anthropic · no API key — run 'configure'".into()
+                },
+                model_desc: settings.inference.anthropic.model.clone(),
+            }
+        }
+        "gemini" => {
+            let has_key = settings.inference.gemini.api_key.is_some()
+                || std::env::var("GEMINI_API_KEY").is_ok()
+                || std::env::var("GOOGLE_API_KEY").is_ok();
+            ProviderInfo {
+                readiness: if has_key { Readiness::Ready } else { Readiness::NotConfigured },
+                provider_desc: if has_key {
+                    "gemini · API key set".into()
+                } else {
+                    "gemini · no API key — run 'configure'".into()
+                },
+                model_desc: settings.inference.gemini.model.clone(),
+            }
+        }
+        // Local servers: endpoint is known but reachability is not confirmed at
+        // startup (we skip the HTTP round-trip to keep the REPL instant).
+        // Users can run `status --check` to probe the endpoint explicitly.
+        "vllm" => ProviderInfo {
+            readiness: Readiness::Unverified,
+            provider_desc: format!(
+                "vllm · {} · not verified (run 'status --check')",
+                settings.inference.vllm.api_base
+            ),
+            model_desc: format!(
+                "{} · endpoint must be reachable to use",
+                settings.inference.vllm.model
+            ),
+        },
+        "ollama" => ProviderInfo {
+            readiness: Readiness::Unverified,
+            provider_desc: format!(
+                "ollama · {} · not verified (run 'status --check')",
+                settings.inference.ollama.base_url
+            ),
+            model_desc: format!(
+                "{} · run 'status --check' to verify",
+                settings.inference.ollama.model
+            ),
+        },
+        other => ProviderInfo {
+            readiness: Readiness::NotConfigured,
+            provider_desc: format!("{} · unrecognised — run 'configure'", other),
+            model_desc: "—".into(),
+        },
+    }
+}
+
 // ── System Ready panel ────────────────────────────────────────────────────────
 
 fn print_ready(settings: &crate::config::Settings) {
     let tw = term_width();
     let inner_w = tw.saturating_sub(2);
-    let provider = &settings.inference.provider;
     let n_schemas = crate::schemas::list_schemas().len();
 
-    // (plain text for width calculation, colored text for display)
-    let schemas_plain = format!("  ✓ Schemas available    ({} built-in)", n_schemas);
-    let provider_plain = format!("  ✓ Provider configured  ({})", provider);
-    let rows: Vec<(&str, String)> = vec![
+    let pi = assess_provider(settings);
+
+    // Config source description
+    let config_note = if user_config_exists() {
+        "~/.structure-d/config.yaml".to_string()
+    } else {
+        "default · run 'configure' to set your provider".to_string()
+    };
+
+    // Choose icons based on readiness
+    let tick  = "✓".green().bold().to_string();
+    let warn  = "⚠".yellow().bold().to_string();
+    let dash  = "–".bright_black().to_string();
+
+    let (p_icon_plain, p_icon_col) = match pi.readiness {
+        Readiness::Ready         => ("✓", tick.clone()),
+        Readiness::NotConfigured => ("⚠", warn.clone()),
+        Readiness::Unverified    => ("–", dash.clone()),
+    };
+    let (m_icon_plain, m_icon_col) = match pi.readiness {
+        Readiness::Ready         => ("✓", tick.clone()),
+        Readiness::NotConfigured => ("⚠", warn.clone()),
+        Readiness::Unverified    => ("–", dash.clone()),
+    };
+
+    // Build (plain, colored) row pairs — plain is used only for width maths
+    let rows: Vec<(String, String)> = vec![
         (
-            "  ✓ Config loaded        (default)",
-            format!("  {} Config loaded        {}", "✓".green().bold(), "(default)".dimmed()),
+            format!("  ✓ Config     ({})", config_note),
+            format!("  {} Config     {}", tick, format!("({})", config_note).dimmed()),
         ),
         (
-            "  ✓ Models registered    (from models.yaml)",
-            format!(
-                "  {} Models registered    {}",
-                "✓".green().bold(),
-                "(from models.yaml)".dimmed()
-            ),
+            format!("  ✓ Schemas    ({} built-in)", n_schemas),
+            format!("  {} Schemas    {}", tick, format!("({} built-in)", n_schemas).dimmed()),
         ),
         (
-            &schemas_plain,
-            format!(
-                "  {} Schemas available    {}",
-                "✓".green().bold(),
-                format!("({} built-in)", n_schemas).dimmed()
-            ),
+            "  ✓ Formats    (PDF, DOCX, HTML, XLSX, Email, Text)".into(),
+            format!("  {} Formats    {}", tick, "(PDF, DOCX, HTML, XLSX, Email, Text)".dimmed()),
         ),
         (
-            "  ✓ Formats supported    (PDF, DOCX, HTML, XLSX, Email, Text)",
-            format!(
-                "  {} Formats supported    {}",
-                "✓".green().bold(),
-                "(PDF, DOCX, HTML, XLSX, Email, Text)".dimmed()
-            ),
+            format!("  {} Provider   ({})", p_icon_plain, pi.provider_desc),
+            format!("  {} Provider   {}", p_icon_col, format!("({})", pi.provider_desc).dimmed()),
         ),
         (
-            &provider_plain,
-            format!(
-                "  {} Provider configured  {}",
-                "✓".green().bold(),
-                format!("({})", provider).dimmed()
-            ),
+            format!("  {} Model      ({})", m_icon_plain, pi.model_desc),
+            format!("  {} Model      {}", m_icon_col, format!("({})", pi.model_desc).dimmed()),
         ),
     ];
 
-    // Green-bordered panel title
-    let title = " System Ready ";
+    // Panel border colour and title depend on overall readiness
+    let is_ready = pi.readiness == Readiness::Ready;
+    let title    = if is_ready { " System Ready " } else { " System Initialized " };
     let title_len = title.chars().count();
-    let dashes = inner_w.saturating_sub(title_len);
-    println!(
-        "{}{}{}{}",
-        "┌".green(),
-        "─".repeat(dashes).green(),
-        title.green().bold(),
-        "┐".green()
-    );
+    let dashes   = inner_w.saturating_sub(title_len);
+
+    if is_ready {
+        println!("{}{}{}{}", "┌".green(),  "─".repeat(dashes).green(),  title.green().bold().to_string(),  "┐".green());
+    } else {
+        println!("{}{}{}{}", "┌".yellow(), "─".repeat(dashes).yellow(), title.yellow().bold().to_string(), "┐".yellow());
+    }
 
     for (plain, colored) in &rows {
         panel_line(" ", plain, colored, inner_w);
     }
 
-    println!("{}{}{}", "└".green(), "─".repeat(inner_w).green(), "┘".green());
+    if is_ready {
+        println!("{}{}{}", "└".green(),  "─".repeat(inner_w).green(),  "┘".green());
+    } else {
+        println!("{}{}{}", "└".yellow(), "─".repeat(inner_w).yellow(), "┘".yellow());
+    }
     println!();
+
+    // Post-panel hint when the user still needs to configure something
+    match pi.readiness {
+        Readiness::NotConfigured => println!(
+            "  {} Run {} to set your LLM provider and API key.\n",
+            "→".bright_cyan(),
+            "'configure'".bright_cyan().bold()
+        ),
+        Readiness::Unverified => println!(
+            "  {} Run {} to confirm the endpoint is reachable before extracting.\n",
+            "→".bright_cyan(),
+            "'status --check'".bright_cyan().bold()
+        ),
+        Readiness::Ready => {}
+    }
 }
 
 // ── Welcome message ───────────────────────────────────────────────────────────
