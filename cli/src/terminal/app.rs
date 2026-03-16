@@ -412,59 +412,182 @@ fn make_output_path(file: &std::path::Path, schema: &str, fmt: &str) -> std::pat
     out_dir.join(name)
 }
 
-/// Save provider + model (+ API key / endpoint) to ~/.structure-d/config.yaml
+/// Mask an API key for safe display: `sk-ant-...abcd`
+fn mask_key(key: &str) -> String {
+    if key.len() > 12 {
+        format!("{}···{}", &key[..6], &key[key.len()-4..])
+    } else {
+        "••••••••".to_string()
+    }
+}
+
+/// Save / update provider + model (+ API key / endpoint) in ~/.structure-d/config.yaml.
+///
+/// If the selected provider is already configured the user is shown what is
+/// currently saved and asked *what* they want to change (model, key, both, or
+/// nothing). Only the chosen fields are re-prompted; everything else is carried
+/// forward from the existing config.  ESC or "Cancel" at any menu exits cleanly.
 fn configure_provider() {
     use dialoguer::{theme::ColorfulTheme, Input, Select};
     let theme = ColorfulTheme::default();
 
     println!();
 
-    // ── Step 1: provider ─────────────────────────────────────────────────────
+    // Load current settings so we can show existing values and pre-select menus.
+    let current = crate::config::Settings::load(None).unwrap_or_default();
+
+    // ── Step 1: choose provider (pre-select whatever is active) ──────────────
     let providers = ["openai", "anthropic", "gemini", "ollama", "vllm"];
+    let current_idx = providers
+        .iter()
+        .position(|p| *p == current.inference.provider)
+        .unwrap_or(0);
+
     let pi = match Select::with_theme(&theme)
         .with_prompt("  Provider")
         .items(&providers)
-        .default(0)
+        .default(current_idx)
         .interact_opt()
     {
         Ok(Some(i)) => i,
-        _ => return,
+        _ => { println!("  {}\n", "Cancelled.".dimmed()); return; }
     };
     let provider = providers[pi];
 
-    // ── Step 2: API key (cloud providers only) ────────────────────────────────
-    let api_key: Option<String> = match provider {
-        "openai" | "anthropic" | "gemini" => {
-            let env_var = match provider {
-                "openai"    => "OPENAI_API_KEY",
-                "anthropic" => "ANTHROPIC_API_KEY",
-                _           => "GEMINI_API_KEY",
-            };
-            let placeholder = std::env::var(env_var).unwrap_or_default();
-            let hint = if placeholder.is_empty() {
-                format!("  API key (or set {} env var)", env_var)
-            } else {
-                format!("  API key [env {} already set — press Enter to keep]", env_var)
-            };
-            let key: String = Input::with_theme(&theme)
-                .with_prompt(&hint)
-                .allow_empty(true)
-                .interact_text()
-                .unwrap_or_default();
-            if key.is_empty() && !placeholder.is_empty() {
-                None // keep existing env var
-            } else if key.is_empty() {
-                println!("  {} No API key provided — skipped.\n", "!".bright_yellow());
-                return;
-            } else {
-                Some(key)
-            }
-        }
-        _ => None,
+    let is_cloud = matches!(provider, "openai" | "anthropic" | "gemini");
+    let is_local = matches!(provider, "vllm" | "ollama");
+
+    // ── Step 2: pull existing saved values for this provider ─────────────────
+    // These come from the config file (not env vars) so we can safely rewrite them.
+    let (saved_key, saved_model, saved_endpoint): (Option<String>, String, Option<String>) =
+        match provider {
+            "openai"    => (current.inference.openai.api_key.clone(),
+                            current.inference.openai.model.clone(), None),
+            "anthropic" => (current.inference.anthropic.api_key.clone(),
+                            current.inference.anthropic.model.clone(), None),
+            "gemini"    => (current.inference.gemini.api_key.clone(),
+                            current.inference.gemini.model.clone(), None),
+            "vllm"      => (None, current.inference.vllm.model.clone(),
+                            Some(current.inference.vllm.api_base.clone())),
+            "ollama"    => (None, current.inference.ollama.model.clone(),
+                            Some(current.inference.ollama.base_url.clone())),
+            _           => (None, String::new(), None),
+        };
+
+    // Also check process env vars for cloud keys (they count as "configured").
+    let env_key: Option<String> = match provider {
+        "openai"    => std::env::var("OPENAI_API_KEY").ok(),
+        "anthropic" => std::env::var("ANTHROPIC_API_KEY").ok(),
+        "gemini"    => std::env::var("GEMINI_API_KEY").ok()
+                           .or_else(|| std::env::var("GOOGLE_API_KEY").ok()),
+        _           => None,
     };
 
-    // ── Step 3: model selection ───────────────────────────────────────────────
-    // Each entry is (display label, model id). An empty id means "Custom…".
+    let effective_key = saved_key.as_ref().or(env_key.as_ref());
+
+    // Provider is "already configured" when:
+    //   cloud  → a key exists (saved or env)
+    //   local  → user has a config file AND it points at this provider
+    let is_configured = if is_cloud {
+        effective_key.is_some()
+    } else {
+        user_config_exists() && current.inference.provider == provider
+    };
+
+    // ── Step 3: if configured, ask what to change (ESC / Cancel exits) ───────
+    // Flags: (need_key, need_model, need_endpoint)
+    let (need_key, need_model, need_endpoint): (bool, bool, bool) = if is_configured {
+        if is_cloud {
+            let key_display = effective_key.map(|k| mask_key(k)).unwrap_or_default();
+            println!(
+                "\n  {} Currently:  {}  ·  model {}  ·  key {}\n",
+                "·".bright_cyan(),
+                provider.bright_cyan().bold(),
+                saved_model.bright_white(),
+                key_display.dimmed(),
+            );
+            let actions = [
+                "Change model",
+                "Change API key",
+                "Change model and API key",
+                "Cancel",
+            ];
+            match Select::with_theme(&theme)
+                .with_prompt("  What would you like to change?")
+                .items(&actions)
+                .default(0)
+                .interact_opt()
+            {
+                Ok(Some(0)) => (false, true,  false), // model only
+                Ok(Some(1)) => (true,  false, false), // key only
+                Ok(Some(2)) => (true,  true,  false), // both
+                _           => { println!("  {}\n", "Cancelled.".dimmed()); return; }
+            }
+        } else {
+            let ep = saved_endpoint.as_deref().unwrap_or("(default)");
+            println!(
+                "\n  {} Currently:  {}  ·  model {}  ·  endpoint {}\n",
+                "·".bright_cyan(),
+                provider.bright_cyan().bold(),
+                saved_model.bright_white(),
+                ep.dimmed(),
+            );
+            let actions = [
+                "Change model",
+                "Change endpoint",
+                "Change model and endpoint",
+                "Cancel",
+            ];
+            match Select::with_theme(&theme)
+                .with_prompt("  What would you like to change?")
+                .items(&actions)
+                .default(0)
+                .interact_opt()
+            {
+                Ok(Some(0)) => (false, true,  false), // model only
+                Ok(Some(1)) => (false, false, true),  // endpoint only
+                Ok(Some(2)) => (false, true,  true),  // both
+                _           => { println!("  {}\n", "Cancelled.".dimmed()); return; }
+            }
+        }
+    } else {
+        // First time — collect everything
+        (is_cloud, true, is_local)
+    };
+
+    // ── Step 4: API key prompt (cloud, when needed) ───────────────────────────
+    let api_key: Option<String> = if is_cloud && need_key {
+        let env_var = match provider {
+            "openai"    => "OPENAI_API_KEY",
+            "anthropic" => "ANTHROPIC_API_KEY",
+            _           => "GEMINI_API_KEY",
+        };
+        let hint = match effective_key {
+            Some(k) => format!("  New API key  [current: {}  — press Enter to keep]", mask_key(k)),
+            None    => format!("  API key  (or set {} env var)", env_var),
+        };
+        let key: String = Input::with_theme(&theme)
+            .with_prompt(&hint)
+            .allow_empty(true)
+            .interact_text()
+            .unwrap_or_default();
+        if key.is_empty() {
+            if saved_key.is_some() {
+                saved_key.clone() // preserve what was in the file
+            } else if env_key.is_some() {
+                None // key lives in env var — don't write it to the file
+            } else {
+                println!("  {} No API key provided — skipped.\n", "!".bright_yellow());
+                return;
+            }
+        } else {
+            Some(key)
+        }
+    } else {
+        saved_key.clone() // carry forward unchanged
+    };
+
+    // ── Step 5: model selection (when needed) ─────────────────────────────────
     let model_menu: &[(&str, &str)] = match provider {
         "openai" => &[
             ("gpt-4o              (recommended, multimodal)", "gpt-4o"),
@@ -485,96 +608,99 @@ fn configure_provider() {
             ("gemini-1.5-flash    (fast, efficient)",         "gemini-1.5-flash"),
             ("Custom…",                                        ""),
         ],
-        _ => &[], // vllm / ollama: free-text entry below
+        _ => &[], // vllm / ollama: free-text below
     };
 
-    // Default selection index — points to the "balanced" / recommended model
-    let default_model_idx: usize = match provider {
-        "openai"    => 1, // gpt-4o-mini
-        "anthropic" => 1, // claude-sonnet-4-6
-        "gemini"    => 0, // gemini-2.0-flash
-        _           => 0,
-    };
-
-    let selected_model: String = if !model_menu.is_empty() {
-        let labels: Vec<&str> = model_menu.iter().map(|(l, _)| *l).collect();
-        let mi = match Select::with_theme(&theme)
-            .with_prompt("  Model")
-            .items(&labels)
-            .default(default_model_idx)
-            .interact_opt()
-        {
-            Ok(Some(i)) => i,
-            _ => return,
-        };
-        let (_, model_id) = model_menu[mi];
-        if model_id.is_empty() {
-            // "Custom…" — free-text entry
+    let selected_model: String = if need_model {
+        if !model_menu.is_empty() {
+            // Pre-select the currently active model if it appears in the list.
+            let pre = model_menu
+                .iter()
+                .position(|(_, id)| *id == saved_model.as_str())
+                .unwrap_or(match provider {
+                    "openai"    => 1, // gpt-4o-mini
+                    "anthropic" => 1, // claude-sonnet-4-6
+                    _           => 0,
+                });
+            let labels: Vec<&str> = model_menu.iter().map(|(l, _)| *l).collect();
+            let mi = match Select::with_theme(&theme)
+                .with_prompt("  Model")
+                .items(&labels)
+                .default(pre)
+                .interact_opt()
+            {
+                Ok(Some(i)) => i,
+                _ => { println!("  {}\n", "Cancelled.".dimmed()); return; }
+            };
+            let (_, model_id) = model_menu[mi];
+            if model_id.is_empty() {
+                // "Custom…"
+                Input::with_theme(&theme)
+                    .with_prompt("  Model name")
+                    .interact_text()
+                    .unwrap_or_default()
+            } else {
+                model_id.to_string()
+            }
+        } else {
+            // Local provider — free-text, pre-filled with current value
+            let default_val = if saved_model.is_empty() {
+                match provider {
+                    "vllm"   => "meta-llama/Meta-Llama-3.1-8B-Instruct",
+                    "ollama" => "llama3.1",
+                    _        => "",
+                }.to_string()
+            } else {
+                saved_model.clone()
+            };
             Input::with_theme(&theme)
                 .with_prompt("  Model name")
+                .default(default_val)
                 .interact_text()
-                .unwrap_or_default()
-        } else {
-            model_id.to_string()
+                .unwrap_or_else(|_| saved_model.clone())
         }
     } else {
-        // vllm / ollama — just a text field with a sensible default
-        let default_val = match provider {
-            "vllm"   => "meta-llama/Meta-Llama-3.1-8B-Instruct",
-            "ollama" => "llama3.1",
-            _        => "",
+        saved_model.clone() // carry forward unchanged
+    };
+
+    // ── Step 6: endpoint prompt (local providers, when needed) ────────────────
+    let endpoint: Option<String> = if is_local && need_endpoint {
+        let (prompt_label, fallback) = match provider {
+            "vllm"   => ("  vLLM API base URL", "http://localhost:8000/v1"),
+            "ollama" => ("  Ollama base URL",    "http://localhost:11434"),
+            _        => ("  Endpoint",           ""),
         };
-        Input::with_theme(&theme)
-            .with_prompt("  Model name")
-            .default(default_val.to_string())
+        let default_ep = saved_endpoint.clone().unwrap_or_else(|| fallback.to_string());
+        let ep: String = Input::with_theme(&theme)
+            .with_prompt(prompt_label)
+            .default(default_ep)
             .interact_text()
-            .unwrap_or_else(|_| default_val.to_string())
+            .unwrap_or_else(|_| fallback.to_string());
+        Some(ep)
+    } else {
+        saved_endpoint.clone() // carry forward unchanged
     };
 
-    // ── Step 4: endpoint (local providers only) ───────────────────────────────
-    let endpoint: Option<String> = match provider {
-        "vllm" => {
-            let ep: String = Input::with_theme(&theme)
-                .with_prompt("  vLLM API base URL")
-                .default("http://localhost:8000/v1".to_string())
-                .interact_text()
-                .unwrap_or_else(|_| "http://localhost:8000/v1".to_string());
-            Some(ep)
-        }
-        "ollama" => {
-            let ep: String = Input::with_theme(&theme)
-                .with_prompt("  Ollama base URL")
-                .default("http://localhost:11434".to_string())
-                .interact_text()
-                .unwrap_or_else(|_| "http://localhost:11434".to_string());
-            Some(ep)
-        }
-        _ => None,
-    };
-
-    // ── Step 5: write ~/.structure-d/config.yaml ──────────────────────────────
+    // ── Step 7: write ~/.structure-d/config.yaml ──────────────────────────────
     let config_dir = dirs::home_dir().unwrap_or_default().join(".structure-d");
     let _ = std::fs::create_dir_all(&config_dir);
     let config_path = config_dir.join("config.yaml");
 
     let provider_block = match provider {
         "openai" => {
-            let key_line = api_key
-                .as_ref()
+            let key_line = api_key.as_ref()
                 .map(|k| format!("    api_key: \"{}\"\n", k))
                 .unwrap_or_default();
             format!("  openai:\n{}    model: \"{}\"\n", key_line, selected_model)
         }
         "anthropic" => {
-            let key_line = api_key
-                .as_ref()
+            let key_line = api_key.as_ref()
                 .map(|k| format!("    api_key: \"{}\"\n", k))
                 .unwrap_or_default();
             format!("  anthropic:\n{}    model: \"{}\"\n", key_line, selected_model)
         }
         "gemini" => {
-            let key_line = api_key
-                .as_ref()
+            let key_line = api_key.as_ref()
                 .map(|k| format!("    api_key: \"{}\"\n", k))
                 .unwrap_or_default();
             format!("  gemini:\n{}    model: \"{}\"\n", key_line, selected_model)
