@@ -1,5 +1,15 @@
 # Structure-D
 
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![Version](https://img.shields.io/badge/version-0.1.0-informational)](https://github.com/jagguvarma15/Structure-D/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](https://github.com/jagguvarma15/Structure-D/blob/main/LICENSE)
+[![Tests](https://img.shields.io/badge/tests-110%20passed-brightgreen?logo=pytest)](https://github.com/jagguvarma15/Structure-D/actions)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-black)](https://github.com/astral-sh/ruff)
+[![Pydantic v2](https://img.shields.io/badge/pydantic-v2-E92063?logo=pydantic&logoColor=white)](https://docs.pydantic.dev/latest/)
+[![Built with Rust](https://img.shields.io/badge/CLI-Rust-orange?logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![FastAPI](https://img.shields.io/badge/API-FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![vLLM](https://img.shields.io/badge/inference-vLLM-blueviolet)](https://github.com/vllm-project/vllm)
+
 An open-source framework to ingest unstructured documents and reliably produce validated, schema-constrained structured data (JSON/CSV/DB), optimized for high-throughput inference with vLLM structured outputs.
 
 Structure-D is **format-focused** (PDF, images, HTML, Office, email, text) and **schema-driven** (Pydantic models defining what you want to extract). It can be used as:
