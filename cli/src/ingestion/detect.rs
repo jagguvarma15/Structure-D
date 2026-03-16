@@ -193,6 +193,7 @@ impl std::fmt::Display for OutputFormat {
 ///
 /// This is informational — use it to guide the user or warn about conversions
 /// that won't produce useful results (e.g., Image → CSV without a schema).
+#[allow(dead_code)]
 pub fn possible_outputs(input: &DocumentFormat) -> Vec<OutputFormat> {
     use DocumentFormat as DF;
     use OutputFormat as OF;

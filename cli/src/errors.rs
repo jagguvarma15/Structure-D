@@ -1,6 +1,7 @@
 use thiserror::Error;
 
 #[derive(Debug, Error)]
+#[allow(dead_code)]
 pub enum StructureDError {
     #[error("Configuration error: {0}")]
     Config(String),
@@ -38,5 +39,3 @@ pub enum StructureDError {
     #[error("Schema not found: {0}")]
     SchemaNotFound(String),
 }
-
-pub type Result<T> = std::result::Result<T, anyhow::Error>;

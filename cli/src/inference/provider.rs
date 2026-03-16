@@ -61,6 +61,7 @@ impl<'a> GenerateRequest<'a> {
 }
 
 #[async_trait]
+#[allow(dead_code)]
 pub trait LLMProvider: Send + Sync {
     fn name(&self) -> &str;
 

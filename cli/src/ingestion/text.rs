@@ -17,6 +17,7 @@ pub fn parse(path: &Path) -> Result<ParsedDocument> {
 }
 
 /// Fallback: try to read any file as UTF-8 text.
+#[allow(dead_code)]
 pub fn parse_as_text(path: &Path) -> Result<ParsedDocument> {
     let content = std::fs::read_to_string(path)
         .with_context(|| format!("Failed to read file as text: {}", path.display()))?;

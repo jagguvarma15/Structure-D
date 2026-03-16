@@ -401,31 +401,6 @@ fn print_help() {
 
 // ── File / directory picker ───────────────────────────────────────────────────
 
-const SUPPORTED_EXTS: &[&str] = &[
-    "pdf", "docx", "xlsx", "xls", "pptx", "html", "htm", "eml", "txt", "md", "csv",
-];
-
-/// Scan `data/input/` for supported files.
-/// Returns (display_label, absolute_path) pairs sorted by label.
-fn collect_input_files() -> Vec<(String, std::path::PathBuf)> {
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let input_dir = cwd.join("data").join("input");
-    let mut files: Vec<(String, std::path::PathBuf)> = Vec::new();
-
-    if let Ok(rd) = std::fs::read_dir(&input_dir) {
-        for entry in rd.filter_map(|e| e.ok()) {
-            let path = entry.path();
-            if !path.is_file() { continue; }
-            let ext = path.extension().and_then(|x| x.to_str()).unwrap_or("").to_lowercase();
-            if !SUPPORTED_EXTS.contains(&ext.as_str()) { continue; }
-            files.push((entry.file_name().to_string_lossy().to_string(), path));
-        }
-    }
-
-    files.sort_by(|a, b| a.0.cmp(&b.0));
-    files
-}
-
 /// Build output path: `data/output/<stem>_<schema>_<YYYY-MM-DD_HH-MM-SS>.<ext>`
 fn make_output_path(file: &std::path::Path, schema: &str, fmt: &str) -> std::path::PathBuf {
     use chrono::Local;
@@ -437,13 +412,14 @@ fn make_output_path(file: &std::path::Path, schema: &str, fmt: &str) -> std::pat
     out_dir.join(name)
 }
 
-/// Save provider + API key to ~/.structure-d/config.yaml
+/// Save provider + model (+ API key / endpoint) to ~/.structure-d/config.yaml
 fn configure_provider() {
     use dialoguer::{theme::ColorfulTheme, Input, Select};
     let theme = ColorfulTheme::default();
 
     println!();
 
+    // ── Step 1: provider ─────────────────────────────────────────────────────
     let providers = ["openai", "anthropic", "gemini", "ollama", "vllm"];
     let pi = match Select::with_theme(&theme)
         .with_prompt("  Provider")
@@ -456,7 +432,7 @@ fn configure_provider() {
     };
     let provider = providers[pi];
 
-    // API key prompt (not needed for ollama/vllm)
+    // ── Step 2: API key (cloud providers only) ────────────────────────────────
     let api_key: Option<String> = match provider {
         "openai" | "anthropic" | "gemini" => {
             let env_var = match provider {
@@ -468,7 +444,7 @@ fn configure_provider() {
             let hint = if placeholder.is_empty() {
                 format!("  API key (or set {} env var)", env_var)
             } else {
-                format!("  API key [env {} already set, press Enter to keep]", env_var)
+                format!("  API key [env {} already set — press Enter to keep]", env_var)
             };
             let key: String = Input::with_theme(&theme)
                 .with_prompt(&hint)
@@ -476,7 +452,7 @@ fn configure_provider() {
                 .interact_text()
                 .unwrap_or_default();
             if key.is_empty() && !placeholder.is_empty() {
-                None // keep env var
+                None // keep existing env var
             } else if key.is_empty() {
                 println!("  {} No API key provided — skipped.\n", "!".bright_yellow());
                 return;
@@ -487,30 +463,146 @@ fn configure_provider() {
         _ => None,
     };
 
-    // Write ~/.structure-d/config.yaml
-    let config_dir = dirs::home_dir()
-        .unwrap_or_default()
-        .join(".structure-d");
+    // ── Step 3: model selection ───────────────────────────────────────────────
+    // Each entry is (display label, model id). An empty id means "Custom…".
+    let model_menu: &[(&str, &str)] = match provider {
+        "openai" => &[
+            ("gpt-4o              (recommended, multimodal)", "gpt-4o"),
+            ("gpt-4o-mini         (default · fast & cheap)",  "gpt-4o-mini"),
+            ("gpt-4-turbo         (legacy GPT-4 turbo)",      "gpt-4-turbo"),
+            ("gpt-3.5-turbo       (fastest, cheapest)",       "gpt-3.5-turbo"),
+            ("Custom…",                                        ""),
+        ],
+        "anthropic" => &[
+            ("claude-opus-4-5     (most capable)",            "claude-opus-4-5"),
+            ("claude-sonnet-4-6   (default · balanced)",      "claude-sonnet-4-6"),
+            ("claude-haiku-3-5    (fastest, cheapest)",       "claude-haiku-3-5"),
+            ("Custom…",                                        ""),
+        ],
+        "gemini" => &[
+            ("gemini-2.0-flash    (default · fast)",          "gemini-2.0-flash"),
+            ("gemini-1.5-pro      (most capable)",            "gemini-1.5-pro"),
+            ("gemini-1.5-flash    (fast, efficient)",         "gemini-1.5-flash"),
+            ("Custom…",                                        ""),
+        ],
+        _ => &[], // vllm / ollama: free-text entry below
+    };
+
+    // Default selection index — points to the "balanced" / recommended model
+    let default_model_idx: usize = match provider {
+        "openai"    => 1, // gpt-4o-mini
+        "anthropic" => 1, // claude-sonnet-4-6
+        "gemini"    => 0, // gemini-2.0-flash
+        _           => 0,
+    };
+
+    let selected_model: String = if !model_menu.is_empty() {
+        let labels: Vec<&str> = model_menu.iter().map(|(l, _)| *l).collect();
+        let mi = match Select::with_theme(&theme)
+            .with_prompt("  Model")
+            .items(&labels)
+            .default(default_model_idx)
+            .interact_opt()
+        {
+            Ok(Some(i)) => i,
+            _ => return,
+        };
+        let (_, model_id) = model_menu[mi];
+        if model_id.is_empty() {
+            // "Custom…" — free-text entry
+            Input::with_theme(&theme)
+                .with_prompt("  Model name")
+                .interact_text()
+                .unwrap_or_default()
+        } else {
+            model_id.to_string()
+        }
+    } else {
+        // vllm / ollama — just a text field with a sensible default
+        let default_val = match provider {
+            "vllm"   => "meta-llama/Meta-Llama-3.1-8B-Instruct",
+            "ollama" => "llama3.1",
+            _        => "",
+        };
+        Input::with_theme(&theme)
+            .with_prompt("  Model name")
+            .default(default_val.to_string())
+            .interact_text()
+            .unwrap_or_else(|_| default_val.to_string())
+    };
+
+    // ── Step 4: endpoint (local providers only) ───────────────────────────────
+    let endpoint: Option<String> = match provider {
+        "vllm" => {
+            let ep: String = Input::with_theme(&theme)
+                .with_prompt("  vLLM API base URL")
+                .default("http://localhost:8000/v1".to_string())
+                .interact_text()
+                .unwrap_or_else(|_| "http://localhost:8000/v1".to_string());
+            Some(ep)
+        }
+        "ollama" => {
+            let ep: String = Input::with_theme(&theme)
+                .with_prompt("  Ollama base URL")
+                .default("http://localhost:11434".to_string())
+                .interact_text()
+                .unwrap_or_else(|_| "http://localhost:11434".to_string());
+            Some(ep)
+        }
+        _ => None,
+    };
+
+    // ── Step 5: write ~/.structure-d/config.yaml ──────────────────────────────
+    let config_dir = dirs::home_dir().unwrap_or_default().join(".structure-d");
     let _ = std::fs::create_dir_all(&config_dir);
     let config_path = config_dir.join("config.yaml");
 
-    let key_line = match (provider, &api_key) {
-        ("openai",    Some(k)) => format!("  openai:\n    api_key: \"{}\"\n", k),
-        ("anthropic", Some(k)) => format!("  anthropic:\n    api_key: \"{}\"\n", k),
-        ("gemini",    Some(k)) => format!("  gemini:\n    api_key: \"{}\"\n", k),
+    let provider_block = match provider {
+        "openai" => {
+            let key_line = api_key
+                .as_ref()
+                .map(|k| format!("    api_key: \"{}\"\n", k))
+                .unwrap_or_default();
+            format!("  openai:\n{}    model: \"{}\"\n", key_line, selected_model)
+        }
+        "anthropic" => {
+            let key_line = api_key
+                .as_ref()
+                .map(|k| format!("    api_key: \"{}\"\n", k))
+                .unwrap_or_default();
+            format!("  anthropic:\n{}    model: \"{}\"\n", key_line, selected_model)
+        }
+        "gemini" => {
+            let key_line = api_key
+                .as_ref()
+                .map(|k| format!("    api_key: \"{}\"\n", k))
+                .unwrap_or_default();
+            format!("  gemini:\n{}    model: \"{}\"\n", key_line, selected_model)
+        }
+        "vllm" => {
+            let ep = endpoint.unwrap_or_else(|| "http://localhost:8000/v1".to_string());
+            format!("  vllm:\n    api_base: \"{}\"\n    model: \"{}\"\n", ep, selected_model)
+        }
+        "ollama" => {
+            let ep = endpoint.unwrap_or_else(|| "http://localhost:11434".to_string());
+            format!("  ollama:\n    base_url: \"{}\"\n    model: \"{}\"\n", ep, selected_model)
+        }
         _ => String::new(),
     };
 
     let yaml = format!(
         "# Structure-D user config — generated by `configure`\ninference:\n  provider: \"{}\"\n{}",
-        provider, key_line
+        provider, provider_block
     );
 
     match std::fs::write(&config_path, &yaml) {
         Ok(_) => println!(
-            "\n  {} Saved to {}\n  {} Restart the REPL for changes to take effect.\n",
+            "\n  {} Saved → {}\n  {} Provider: {}   Model: {}\n  {} Restart the terminal for changes to take effect.\n",
             "✓".bright_green().bold(),
             config_path.display().to_string().dimmed(),
+            "·".dimmed(),
+            provider.bright_cyan().bold(),
+            selected_model.bright_cyan().bold(),
             "→".bright_cyan(),
         ),
         Err(e) => println!("\n  {} Could not save config: {}\n", "✗".red(), e),

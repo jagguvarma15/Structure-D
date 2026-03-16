@@ -28,6 +28,7 @@ pub struct ValidationResult {
     pub data: Option<Value>,
     pub is_valid: bool,
     pub errors: Vec<String>,
+    #[allow(dead_code)]
     pub raw_output: String,
 }
 
