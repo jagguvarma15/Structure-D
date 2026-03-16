@@ -4,26 +4,26 @@ use std::path::Path;
 use super::{DocumentFormat, ParsedDocument};
 
 pub fn parse(path: &Path) -> Result<ParsedDocument> {
-    let doc = lopdf::Document::load(path)
-        .with_context(|| format!("Failed to load PDF: {}", path.display()))?;
+    // ── Text extraction ───────────────────────────────────────────────────────
+    // `pdf-extract` handles ToUnicode CMap, CID/Type0 composite fonts, and
+    // other encoding variants that `lopdf::extract_text` silently fails on.
+    let content = pdf_extract::extract_text(path)
+        .with_context(|| format!("Failed to extract text from PDF: {}", path.display()))?;
 
-    let page_count = doc.get_pages().len();
-    let mut pages_text: Vec<String> = Vec::with_capacity(page_count);
-
-    for (page_num, _page_id) in doc.get_pages() {
-        match doc.extract_text(&[page_num]) {
-            Ok(text) => pages_text.push(text),
-            Err(_) => pages_text.push(String::new()),
-        }
-    }
-
-    let content = pages_text.join("\n\n");
+    // ── Page count (best-effort via lopdf) ────────────────────────────────────
+    // lopdf is still reliable for structural metadata even when it cannot
+    // decode the text layer.
+    let page_count = lopdf::Document::load(path)
+        .ok()
+        .map(|d| d.get_pages().len());
 
     let mut doc_result = ParsedDocument::new(content, path, DocumentFormat::Pdf);
-    doc_result.page_count = Some(page_count);
-    doc_result
-        .metadata
-        .insert("page_count".into(), serde_json::json!(page_count));
+    doc_result.page_count = page_count;
+    if let Some(n) = page_count {
+        doc_result
+            .metadata
+            .insert("page_count".into(), serde_json::json!(n));
+    }
 
     Ok(doc_result)
 }

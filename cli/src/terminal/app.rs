@@ -723,13 +723,12 @@ fn configure_provider() {
 
     match std::fs::write(&config_path, &yaml) {
         Ok(_) => println!(
-            "\n  {} Saved → {}\n  {} Provider: {}   Model: {}\n  {} Restart the terminal for changes to take effect.\n",
+            "\n  {} Saved → {}\n  {} Provider: {}   Model: {}\n",
             "✓".bright_green().bold(),
             config_path.display().to_string().dimmed(),
             "·".dimmed(),
             provider.bright_cyan().bold(),
             selected_model.bright_cyan().bold(),
-            "→".bright_cyan(),
         ),
         Err(e) => println!("\n  {} Could not save config: {}\n", "✗".red(), e),
     }
@@ -910,7 +909,16 @@ fn pick_and_run_batch() {
 
 // ── Command dispatch ──────────────────────────────────────────────────────────
 
-fn dispatch(input: &str, settings: &crate::config::Settings) -> bool {
+enum DispatchResult {
+    /// Keep the REPL running as normal.
+    Continue,
+    /// Exit the REPL.
+    Exit,
+    /// Config was written — reload settings and redisplay the status panel.
+    Reload,
+}
+
+fn dispatch(input: &str, settings: &crate::config::Settings) -> DispatchResult {
     let mut parts = input.splitn(2, ' ');
     let cmd = parts.next().unwrap_or("").to_lowercase();
     let rest = parts.next().unwrap_or("").trim();
@@ -918,7 +926,7 @@ fn dispatch(input: &str, settings: &crate::config::Settings) -> bool {
     match cmd.as_str() {
         "exit" | "quit" | "q" => {
             println!("{}", "Goodbye!".bright_cyan());
-            return false;
+            return DispatchResult::Exit;
         }
         "help" | "?" => print_help(),
         "clear" => {
@@ -973,7 +981,10 @@ fn dispatch(input: &str, settings: &crate::config::Settings) -> bool {
         }
         // ── upload / configure / extract / batch ─────────────────────────────
         "upload" | "u" => pick_and_run_upload(),
-        "configure" | "config set" => configure_provider(),
+        "configure" | "config set" => {
+            configure_provider();
+            return DispatchResult::Reload;
+        }
         "extract" => {
             if rest.is_empty() {
                 pick_and_run_upload();
@@ -1010,13 +1021,13 @@ fn dispatch(input: &str, settings: &crate::config::Settings) -> bool {
             );
         }
     }
-    true
+    DispatchResult::Continue
 }
 
 // ── Public entry point ────────────────────────────────────────────────────────
 
 pub fn run_interactive() -> Result<()> {
-    let settings = crate::config::Settings::load(None).unwrap_or_default();
+    let mut settings = crate::config::Settings::load(None).unwrap_or_default();
 
     print_banner();
     print_init();
@@ -1039,8 +1050,16 @@ pub fn run_interactive() -> Result<()> {
                 if !line.is_empty() {
                     let _ = rl.add_history_entry(&line);
                 }
-                if !dispatch(&line, &settings) {
-                    break;
+                match dispatch(&line, &settings) {
+                    DispatchResult::Exit => break,
+                    DispatchResult::Reload => {
+                        // Re-read the config file and redisplay the status panel
+                        // so the new provider/model/key is reflected immediately.
+                        settings = crate::config::Settings::load(None).unwrap_or_default();
+                        println!();
+                        print_ready(&settings);
+                    }
+                    DispatchResult::Continue => {}
                 }
             }
             Err(rustyline::error::ReadlineError::Interrupted)
