@@ -19,8 +19,22 @@ const WORDMARK: &[&str] = &[
 
 const TAGLINE: &str =
     "Unstructured → Structured  ·  Any format, any schema, high-throughput vLLM inference";
-const VERSION: &str = "CLI v0.1.0";
 const SUBTITLE: &str = "Command-line interface";
+
+/// Full version string shown in the banner title.
+///
+/// On a clean tagged release → `"CLI v0.2.0"`
+/// After new commits         → `"CLI v0.2.0 (v0.2.0-3-gabcdef)"`
+fn cli_version() -> String {
+    let base = env!("CARGO_PKG_VERSION");
+    let desc = env!("GIT_DESCRIBE");
+    let clean_tag = format!("v{}", base);
+    if desc == clean_tag || desc == base {
+        format!("CLI v{}", base)
+    } else {
+        format!("CLI v{} ({})", base, desc)
+    }
+}
 
 // ── Terminal helpers ──────────────────────────────────────────────────────────
 
@@ -51,7 +65,7 @@ fn print_banner() {
     let content_w = inner_w.saturating_sub(pad_h * 2);
 
     // Top border — version title flush-right
-    let title = format!(" {} ", VERSION);
+    let title = format!(" {} ", cli_version());
     let title_len = title.chars().count();
     let dashes = inner_w.saturating_sub(title_len);
     println!(
@@ -934,7 +948,13 @@ fn dispatch(input: &str, settings: &crate::config::Settings) -> DispatchResult {
             print_banner();
         }
         "version" => {
-            println!("{} {}", "Structure-D".bold(), "v0.1.0".bright_cyan());
+            println!(
+                "{} {}\n  {} {}",
+                "Structure-D".bold(),
+                format!("v{}", env!("CARGO_PKG_VERSION")).bright_cyan().bold(),
+                "build".dimmed(),
+                env!("GIT_DESCRIBE").dimmed(),
+            );
         }
         "schemas" => {
             println!("\n{}\n", "Built-in schemas:".bold());

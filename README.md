@@ -1,7 +1,7 @@
 # Structure-D
 
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-0.1.0-informational)](https://github.com/jagguvarma15/Structure-D/releases)
+[![Version](https://img.shields.io/badge/version-0.2.0-informational)](https://github.com/jagguvarma15/Structure-D/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](https://github.com/jagguvarma15/Structure-D/blob/main/LICENSE)
 [![Tests](https://img.shields.io/badge/tests-110%20passed-brightgreen?logo=pytest)](https://github.com/jagguvarma15/Structure-D/actions)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-black)](https://github.com/astral-sh/ruff)

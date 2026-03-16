@@ -35,7 +35,7 @@ class ExtractResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str = "ok"
-    version: str = "0.1.0"
+    version: str = "0.2.0"
 
 
 class ModelsResponse(BaseModel):

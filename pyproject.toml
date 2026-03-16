@@ -1,6 +1,6 @@
 [project]
 name = "structure-d"
-version = "0.1.0"
+version = "0.2.0"
 description = "An open-source framework to ingest unstructured documents and reliably produce validated, schema-constrained structured data (JSON/CSV/DB), optimized for high-throughput inference with vLLM structured outputs."
 readme = "README.md"
 license = { text = "MIT" }

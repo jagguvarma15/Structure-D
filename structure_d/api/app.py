@@ -30,7 +30,7 @@ def create_app():  # noqa: ANN201
     app = FastAPI(
         title="Structure-D API",
         description="Convert unstructured documents to structured data.",
-        version="0.1.0",
+        version="0.2.0",
         lifespan=lifespan,
     )
 
