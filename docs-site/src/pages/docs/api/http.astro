@@ -1,0 +1,460 @@
+---
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+
+const base = import.meta.env.BASE_URL;
+
+const toc = [
+  { text: 'Starting the server',  id: 'start-server',    depth: 2 },
+  { text: 'Authentication',       id: 'auth',            depth: 2 },
+  { text: 'POST /extract',        id: 'post-extract',    depth: 2 },
+  { text: 'GET /health',          id: 'get-health',      depth: 2 },
+  { text: 'GET /models',          id: 'get-models',      depth: 2 },
+  { text: 'GET /schemas',         id: 'get-schemas',     depth: 2 },
+  { text: 'GET /formats',         id: 'get-formats',     depth: 2 },
+  { text: 'Error responses',      id: 'errors',          depth: 2 },
+  { text: 'Python client',        id: 'python-client',   depth: 2 },
+];
+
+const endpoints = [
+  { method: 'POST', path: '/api/v1/extract',  desc: 'Upload a document and extract structured data' },
+  { method: 'GET',  path: '/api/v1/health',   desc: 'Liveness / readiness check' },
+  { method: 'GET',  path: '/api/v1/models',   desc: 'List all registered LLM models' },
+  { method: 'GET',  path: '/api/v1/schemas',  desc: 'List all available extraction schemas' },
+  { method: 'GET',  path: '/api/v1/formats',  desc: 'List supported file formats and extensions' },
+];
+---
+
+<DocsLayout
+  title="HTTP API"
+  description="REST API reference for the Structure-D FastAPI service — endpoints, request format, and response schema."
+  toc={toc}
+  editPath="/docs/api/http.astro"
+  prev={{ label: 'Utilities', href: `${base}docs/api/utilities` }}
+>
+  <p>
+    Structure-D ships a production-ready <strong>FastAPI</strong> application that exposes the pipeline over HTTP.
+    Use it when you need to call Structure-D from any language, integrate it into an existing microservice mesh,
+    or deploy it as a standalone extraction service.
+  </p>
+
+  <div class="endpoint-summary">
+    {endpoints.map(ep => (
+      <div class="ep-row">
+        <span class:list={['ep-method', `method-${ep.method.toLowerCase()}`]}>{ep.method}</span>
+        <code class="ep-path">{ep.path}</code>
+        <span class="ep-desc">{ep.desc}</span>
+      </div>
+    ))}
+  </div>
+
+  <h2 id="start-server">Starting the server</h2>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">bash</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-bash"># Development (auto-reload)
+uvicorn structure_d.api.app:create_app --factory --reload --port 8080
+
+# Production
+uvicorn structure_d.api.app:create_app \
+  --factory \
+  --host 0.0.0.0 \
+  --port 8080 \
+  --workers 4
+
+# Docker
+docker compose up api</code></pre>
+  </div>
+
+  <p>Or create the app programmatically:</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">from structure_d.api.app import create_app
+
+app = create_app()   # returns a FastAPI instance
+# use with any ASGI server: Uvicorn, Hypercorn, Daphne</code></pre>
+  </div>
+
+  <h2 id="auth">Authentication</h2>
+  <p>
+    Authentication is optional in v0.2. Pass <code>SD_API_KEY</code> as an environment variable to
+    enable bearer token auth. When set, every request must include:
+  </p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">bash</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-bash">Authorization: Bearer &lt;your-api-key&gt;</code></pre>
+  </div>
+
+  <p>Full API key + JWT auth ships in v0.4.0.</p>
+
+  <h2 id="post-extract">POST /api/v1/extract</h2>
+  <p>Upload a document file and receive extracted structured data. Accepts <code>multipart/form-data</code>.</p>
+
+  <div class="http-block">
+    <div class="http-block-header">
+      <span class="http-method post">POST</span>
+      <code class="http-path">/api/v1/extract</code>
+    </div>
+
+    <div class="http-section">
+      <p class="http-section-title">Request — multipart/form-data</p>
+      <div class="param-row">
+        <span class="param-name">file</span>
+        <span class="param-type">file <span class="badge badge-required">required</span></span>
+        <span class="param-desc">The document to extract. Any supported format (PDF, PNG, DOCX, ...).</span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">schema</span>
+        <span class="param-type">string</span>
+        <span class="param-desc">Built-in schema name: <code>key_value</code>, <code>table</code>, <code>entity</code>, <code>classification</code>, <code>summary</code>, <code>form</code>, <code>document_structure</code>, <code>generic</code>. Defaults to <code>key_value</code>.</span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">schema_json</span>
+        <span class="param-type">string (JSON)</span>
+        <span class="param-desc">JSON Schema string for a custom schema. Overrides <code>schema</code> if provided.</span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">parser</span>
+        <span class="param-type">string</span>
+        <span class="param-desc">Force a specific parser: <code>pymupdf</code>, <code>pdfplumber</code>, <code>ocr_pdf</code>, <code>tesseract_image</code>, <code>html</code>, <code>docx</code>, etc. Defaults to <code>auto</code>.</span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">provider</span>
+        <span class="param-type">string</span>
+        <span class="param-desc">Override the LLM provider: <code>openai</code>, <code>anthropic</code>, <code>gemini</code>, <code>ollama</code>, <code>vllm</code>. Uses configured default if omitted.</span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">save_format</span>
+        <span class="param-type">string</span>
+        <span class="param-desc">Auto-save results server-side: <code>jsonl</code>, <code>csv</code>. Omit to skip saving.</span>
+      </div>
+    </div>
+
+    <div class="http-section">
+      <p class="http-section-title">Response — 200 OK</p>
+      <div class="code-block-wrapper" style="margin:0">
+        <div class="code-block-header">
+          <span class="code-block-lang">json</span>
+          <button class="code-block-copy">Copy</button>
+        </div>
+        <pre><code class="language-json">&#123;
+  "status": "success",
+  "filename": "invoice.pdf",
+  "schema": "key_value",
+  "results": [
+    &#123;
+      "result_id": "3e4f2a1b-...",
+      "document_id": "7c8d9e0f-...",
+      "is_valid": true,
+      "structured_output": &#123;
+        "pairs": [
+          &#123;"key": "vendor",    "value": "Acme Corp",   "confidence": 0.97&#125;,
+          &#123;"key": "total",     "value": "1240.00",     "confidence": 0.99&#125;,
+          &#123;"key": "due_date",  "value": "2026-04-15",  "confidence": 0.91&#125;
+        ]
+      &#125;,
+      "model_used": "gpt-4o",
+      "latency_ms": 812,
+      "token_usage": &#123;
+        "prompt_tokens": 420,
+        "completion_tokens": 88,
+        "total_tokens": 508
+      &#125;,
+      "validation_errors": [],
+      "source_format": "PDF"
+    &#125;
+  ],
+  "chunk_count": 1,
+  "processing_ms": 1340
+&#125;</code></pre>
+      </div>
+    </div>
+  </div>
+
+  <h4>cURL example</h4>
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">bash</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-bash">curl -X POST http://localhost:8080/api/v1/extract \
+  -F "file=@invoice.pdf" \
+  -F "schema=key_value" \
+  -F "provider=openai"</code></pre>
+  </div>
+
+  <h2 id="get-health">GET /api/v1/health</h2>
+  <p>Liveness and readiness check. Returns provider connectivity status.</p>
+
+  <div class="http-block">
+    <div class="http-block-header">
+      <span class="http-method get">GET</span>
+      <code class="http-path">/api/v1/health</code>
+    </div>
+    <div class="http-section">
+      <p class="http-section-title">Response — 200 OK</p>
+      <div class="code-block-wrapper" style="margin:0">
+        <div class="code-block-header">
+          <span class="code-block-lang">json</span>
+          <button class="code-block-copy">Copy</button>
+        </div>
+        <pre><code class="language-json">&#123;
+  "status": "healthy",
+  "version": "0.2.0",
+  "provider": "openai",
+  "provider_status": "reachable",
+  "uptime_seconds": 3602
+&#125;</code></pre>
+      </div>
+    </div>
+  </div>
+
+  <h2 id="get-models">GET /api/v1/models</h2>
+  <p>Returns all models registered in the ModelRegistry.</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">json</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-json">&#123;
+  "models": [
+    &#123;
+      "alias": "llama-3.1-8b",
+      "model_id": "meta-llama/Llama-3.1-8B-Instruct",
+      "provider": "vllm",
+      "supported_tasks": ["extraction", "classification", "summarisation"],
+      "context_length": 131072
+    &#125;,
+    &#123;
+      "alias": "gpt-4o",
+      "model_id": "gpt-4o",
+      "provider": "openai",
+      "supported_tasks": ["extraction", "classification", "summarisation", "reasoning"],
+      "context_length": 128000
+    &#125;
+  ]
+&#125;</code></pre>
+  </div>
+
+  <h2 id="get-schemas">GET /api/v1/schemas</h2>
+  <p>Returns all built-in extraction schemas with their JSON Schema definitions.</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">json</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-json">&#123;
+  "schemas": [
+    &#123;
+      "name": "key_value",
+      "class": "KeyValueExtraction",
+      "description": "Extracts key-value pairs with confidence scores",
+      "json_schema": &#123; "..." &#125;
+    &#125;
+  ]
+&#125;</code></pre>
+  </div>
+
+  <h2 id="get-formats">GET /api/v1/formats</h2>
+  <p>Returns all supported file extensions and their default parsers.</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">json</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-json">&#123;
+  "formats": [
+    &#123;"extension": ".pdf",  "parser": "pymupdf",         "format": "PDF"   &#125;,
+    &#123;"extension": ".png",  "parser": "tesseract_image",  "format": "IMAGE" &#125;,
+    &#123;"extension": ".docx", "parser": "docx",             "format": "DOCX"  &#125;,
+    &#123;"extension": ".html", "parser": "html",             "format": "HTML"  &#125;
+  ]
+&#125;</code></pre>
+  </div>
+
+  <h2 id="errors">Error responses</h2>
+  <p>All errors return a JSON body with <code>error</code>, <code>detail</code>, and <code>code</code>.</p>
+
+  <div class="prose-table-wrapper">
+    <table class="prose-table">
+      <thead>
+        <tr><th>HTTP status</th><th>code</th><th>When it happens</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>400</td><td><code>UNSUPPORTED_FORMAT</code></td><td>File extension is not in the supported formats list</td></tr>
+        <tr><td>400</td><td><code>INVALID_SCHEMA</code></td><td><code>schema_json</code> is not valid JSON Schema</td></tr>
+        <tr><td>401</td><td><code>UNAUTHORIZED</code></td><td>API key is missing or invalid (when auth is enabled)</td></tr>
+        <tr><td>422</td><td><code>VALIDATION_FAILED</code></td><td>All retry attempts exhausted; extraction result is invalid</td></tr>
+        <tr><td>429</td><td><code>RATE_LIMITED</code></td><td>Too many requests (v0.4.0+)</td></tr>
+        <tr><td>500</td><td><code>INFERENCE_ERROR</code></td><td>Provider returned an error or is unreachable</td></tr>
+        <tr><td>500</td><td><code>PARSER_ERROR</code></td><td>Parser failed to process the uploaded file</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">json</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-json">&#123;
+  "error": "INFERENCE_ERROR",
+  "detail": "OpenAI API returned 429: rate limit exceeded",
+  "code": 500,
+  "request_id": "req_abc123"
+&#125;</code></pre>
+  </div>
+
+  <h2 id="python-client">Python client</h2>
+  <p>Call the HTTP API from Python using <code>httpx</code>:</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-filename">client.py</span>
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">import httpx
+from pathlib import Path
+
+BASE_URL = "http://localhost:8080"
+
+async def extract(file_path: Path, schema: str = "key_value") -> dict:
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        with open(file_path, "rb") as f:
+            response = await client.post(
+                f"&#123;BASE_URL&#125;/api/v1/extract",
+                files=&#123;"file": (file_path.name, f, "application/octet-stream")&#125;,
+                data=&#123;"schema": schema&#125;,
+            )
+        response.raise_for_status()
+        return response.json()
+
+# Use it
+import asyncio
+result = asyncio.run(extract(Path("contract.pdf"), schema="key_value"))
+print(result["results"][0]["structured_output"])</code></pre>
+  </div>
+
+  <div class="callout info">
+    <span class="callout-icon">i</span>
+    <div class="callout-body">
+      <p class="callout-title">OpenAPI / Swagger UI</p>
+      <p class="callout-content">The running service exposes an interactive OpenAPI UI at <code>http://localhost:8080/docs</code> and a ReDoc view at <code>http://localhost:8080/redoc</code>.</p>
+    </div>
+  </div>
+</DocsLayout>
+
+<style>
+  .endpoint-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    border: 1px solid var(--border-default);
+    border-radius: 10px;
+    overflow: hidden;
+    margin: var(--space-4) 0;
+    background: var(--bg-root);
+  }
+
+  .ep-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .ep-row:last-child { border-bottom: none; }
+
+  .ep-method {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+    min-width: 44px;
+    text-align: center;
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+  }
+
+  .method-post { background: rgba(37,99,235,0.1); color: var(--accent); }
+  .method-get  { background: rgba(22,163,74,0.1);  color: var(--success); }
+
+  .ep-path {
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+    flex-shrink: 0;
+    min-width: 200px;
+  }
+
+  .ep-desc {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+  }
+
+  /* HTTP blocks */
+  .http-block {
+    border: 1px solid var(--border-default);
+    border-radius: 10px;
+    overflow: hidden;
+    margin: var(--space-4) 0;
+    background: var(--bg-root);
+  }
+
+  .http-block-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-default);
+  }
+
+  .http-method {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.04em;
+  }
+
+  .http-method.post { background: rgba(37,99,235,0.1); color: var(--accent); }
+  .http-method.get  { background: rgba(22,163,74,0.1);  color: var(--success); }
+
+  .http-path {
+    font-size: var(--text-base);
+    color: var(--text-primary);
+  }
+
+  .http-section {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .http-section:last-child { border-bottom: none; }
+
+  .http-section-title {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+</style>

@@ -4,9 +4,11 @@ import DocsLayout from '../../../layouts/DocsLayout.astro';
 const base = import.meta.env.BASE_URL;
 
 const toc = [
-  { text: 'Module map', id: 'module-map', depth: 2 },
-  { text: 'Import paths', id: 'import-paths', depth: 2 },
-  { text: 'Exception hierarchy', id: 'exceptions', depth: 2 },
+  { text: 'Module map',        id: 'module-map',    depth: 2 },
+  { text: 'Import paths',      id: 'import-paths',  depth: 2 },
+  { text: 'Type reference',    id: 'type-ref',      depth: 2 },
+  { text: 'Supported formats', id: 'formats',       depth: 2 },
+  { text: 'Exception hierarchy', id: 'exceptions',  depth: 2 },
 ];
 
 const modules = [
@@ -105,6 +107,108 @@ from structure_d.exceptions import (
     StructureDError, ParserError, ValidationError,
     InferenceError, ConfigurationError, ModelRoutingError,
 )</code></pre>
+  </div>
+
+  <h2 id="type-ref">Type reference</h2>
+  <p>Quick lookup for the most commonly used types across the Structure-D API surface.</p>
+
+  <div class="prose-table-wrapper">
+    <table class="prose-table">
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Module</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>Pipeline</code></td>
+          <td><code>structure_d.pipeline</code></td>
+          <td>Main entry point. Wires all six stages together.</td>
+        </tr>
+        <tr>
+          <td><code>ExtractionResult</code></td>
+          <td><code>structure_d.schemas.base</code></td>
+          <td>Output of a single chunk extraction — contains <code>structured_output</code>, <code>is_valid</code>, <code>latency_ms</code>, <code>token_usage</code>.</td>
+        </tr>
+        <tr>
+          <td><code>ParsedDocument</code></td>
+          <td><code>structure_d.schemas.base</code></td>
+          <td>Raw output of a parser — text, page list, tables, images, and <code>DocumentMetadata</code>.</td>
+        </tr>
+        <tr>
+          <td><code>TextChunk</code></td>
+          <td><code>structure_d.schemas.base</code></td>
+          <td>A single text segment from the Chunker — includes <code>chunk_index</code>, <code>token_count</code>, <code>page_number</code>.</td>
+        </tr>
+        <tr>
+          <td><code>DocumentMetadata</code></td>
+          <td><code>structure_d.schemas.base</code></td>
+          <td>File-level metadata attached to every <code>ParsedDocument</code>.</td>
+        </tr>
+        <tr>
+          <td><code>TaskType</code></td>
+          <td><code>structure_d.schemas.base</code></td>
+          <td>Enum: <code>EXTRACTION</code>, <code>CLASSIFICATION</code>, <code>SUMMARISATION</code>, <code>ENTITY_EXTRACTION</code>, <code>TABLE_EXTRACTION</code>.</td>
+        </tr>
+        <tr>
+          <td><code>DocumentFormat</code></td>
+          <td><code>structure_d.schemas.base</code></td>
+          <td>Enum: <code>PDF</code>, <code>IMAGE</code>, <code>HTML</code>, <code>DOCX</code>, <code>XLSX</code>, <code>PPTX</code>, <code>EMAIL</code>, <code>PLAIN_TEXT</code>, <code>AUDIO_TRANSCRIPT</code>.</td>
+        </tr>
+        <tr>
+          <td><code>BaseLLMProvider</code></td>
+          <td><code>structure_d.inference.providers</code></td>
+          <td>Abstract base for all LLM providers. Implement <code>generate()</code> to add a new provider.</td>
+        </tr>
+        <tr>
+          <td><code>ProviderResult</code></td>
+          <td><code>structure_d.inference.providers</code></td>
+          <td>Raw return from a provider call — <code>content</code>, <code>model</code>, <code>usage</code>, <code>latency_ms</code>.</td>
+        </tr>
+        <tr>
+          <td><code>ModelEntry</code></td>
+          <td><code>structure_d.models.registry</code></td>
+          <td>Registry entry: <code>alias</code>, <code>model_id</code>, <code>provider</code>, <code>supported_tasks</code>, <code>context_length</code>.</td>
+        </tr>
+        <tr>
+          <td><code>Settings</code></td>
+          <td><code>structure_d.config</code></td>
+          <td>Root Pydantic config model loaded from YAML. Nested: <code>inference</code>, <code>ingestion</code>, <code>preprocessing</code>, <code>validation</code>, <code>storage</code>.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="formats">Supported formats</h2>
+  <p>Every file extension Structure-D can ingest, with the default parser and what it extracts.</p>
+
+  <div class="prose-table-wrapper">
+    <table class="prose-table">
+      <thead>
+        <tr>
+          <th>Extension</th>
+          <th>Format enum</th>
+          <th>Default parser</th>
+          <th>Extracts</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><code>.pdf</code> (text)</td><td><code>PDF</code></td><td><code>pymupdf</code></td><td>Text per page, tables, metadata</td></tr>
+        <tr><td><code>.pdf</code> (text, alt)</td><td><code>PDF</code></td><td><code>pdfplumber</code></td><td>Accurate table detection</td></tr>
+        <tr><td><code>.pdf</code> (scanned)</td><td><code>PDF</code></td><td><code>ocr_pdf</code></td><td>OCR via Tesseract</td></tr>
+        <tr><td><code>.png</code> <code>.jpg</code> <code>.tiff</code></td><td><code>IMAGE</code></td><td><code>tesseract_image</code></td><td>OCR text from raster images</td></tr>
+        <tr><td><code>.html</code> <code>.htm</code></td><td><code>HTML</code></td><td><code>html</code></td><td>Cleaned body text, tables, links</td></tr>
+        <tr><td><code>.docx</code></td><td><code>DOCX</code></td><td><code>docx</code></td><td>Paragraphs, styles, tables</td></tr>
+        <tr><td><code>.xlsx</code> <code>.xls</code></td><td><code>XLSX</code></td><td><code>xlsx</code></td><td>All sheet data as string matrix</td></tr>
+        <tr><td><code>.pptx</code></td><td><code>PPTX</code></td><td><code>pptx</code></td><td>Slide text and speaker notes</td></tr>
+        <tr><td><code>.eml</code> <code>.msg</code></td><td><code>EMAIL</code></td><td><code>email</code></td><td>Subject, body, headers, attachments list</td></tr>
+        <tr><td><code>.txt</code> <code>.md</code> <code>.rst</code></td><td><code>PLAIN_TEXT</code></td><td><code>plaintext</code></td><td>Raw text</td></tr>
+        <tr><td><code>.csv</code></td><td><code>PLAIN_TEXT</code></td><td><code>plaintext</code></td><td>Raw text (CSV rows as text)</td></tr>
+        <tr><td><code>.vtt</code> <code>.srt</code></td><td><code>AUDIO_TRANSCRIPT</code></td><td><code>transcript</code></td><td>Caption text with timestamps</td></tr>
+      </tbody>
+    </table>
   </div>
 
   <h2 id="exceptions">Exception hierarchy</h2>

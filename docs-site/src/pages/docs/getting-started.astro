@@ -4,10 +4,13 @@ import DocsLayout from '../../layouts/DocsLayout.astro';
 const base = import.meta.env.BASE_URL;
 
 const toc = [
-  { text: 'What is Structure-D?', id: 'what-is-structure-d', depth: 2 },
-  { text: 'How it works', id: 'how-it-works', depth: 2 },
-  { text: 'Quick start', id: 'quick-start', depth: 2 },
-  { text: 'Next steps', id: 'next-steps', depth: 2 },
+  { text: 'What is Structure-D?',    id: 'what-is-structure-d', depth: 2 },
+  { text: 'How it works',            id: 'how-it-works',         depth: 2 },
+  { text: 'Quick start',             id: 'quick-start',          depth: 2 },
+  { text: 'Common use cases',        id: 'use-cases',            depth: 2 },
+  { text: 'Core concepts',           id: 'core-concepts',        depth: 2 },
+  { text: 'Next steps',              id: 'next-steps',           depth: 2 },
+  { text: 'FAQ',                     id: 'faq',                  depth: 2 },
 ];
 ---
 
@@ -23,9 +26,7 @@ const toc = [
     <strong>Structure-D</strong> is a modular pipeline framework that converts unstructured documents
     (PDFs, images, HTML, DOCX, and more) into <strong>validated, schema-constrained structured data</strong> using LLMs.
   </p>
-  <p>
-    It is designed around three principles:
-  </p>
+  <p>It is designed around three principles:</p>
   <ul>
     <li><strong>Format-focused, not domain-specific</strong> — Structure-D handles file formats, not document types. You define what you want to extract.</li>
     <li><strong>Schema-driven</strong> — Your Pydantic model is the contract. Structure-D guarantees the output matches it.</li>
@@ -33,7 +34,7 @@ const toc = [
   </ul>
 
   <div class="callout info">
-    <span class="callout-icon">ℹ</span>
+    <span class="callout-icon">i</span>
     <div class="callout-body">
       <p class="callout-title">Currently in beta</p>
       <p class="callout-content">Structure-D v0.2.0 is production-ready for Phase 1 features. ETL scheduling and HITL workflows are on the roadmap for v0.3.0.</p>
@@ -45,11 +46,43 @@ const toc = [
   <ol>
     <li><strong>Ingestion</strong> — a format-appropriate parser extracts raw text, tables, and images from your file</li>
     <li><strong>Preprocessing</strong> — text is normalized, cleaned, and chunked into optimal-size segments</li>
-    <li><strong>Model Routing</strong> — the router selects the best registered model for your task</li>
-    <li><strong>Inference</strong> — the LLM provider generates structured output constrained to your schema</li>
-    <li><strong>Validation</strong> — every output is validated against the Pydantic model; invalid outputs are retried</li>
+    <li><strong>Model Routing</strong> — the router selects the best registered model for your task and schema</li>
+    <li><strong>Inference</strong> — the LLM provider generates structured output constrained to your schema via <code>guided_json</code></li>
+    <li><strong>Validation</strong> — every output is validated against the Pydantic model; invalid outputs trigger an automatic retry with a refined prompt</li>
     <li><strong>Storage</strong> — results are written to JSONL, CSV, or a database destination</li>
   </ol>
+
+  <div class="pipeline-diagram">
+    <div class="pd-step">
+      <span class="pd-abbr" style="color:#2563eb">IN</span>
+      <span class="pd-label">Ingest</span>
+    </div>
+    <span class="pd-arrow">&rarr;</span>
+    <div class="pd-step">
+      <span class="pd-abbr" style="color:#7c3aed">PP</span>
+      <span class="pd-label">Preprocess</span>
+    </div>
+    <span class="pd-arrow">&rarr;</span>
+    <div class="pd-step">
+      <span class="pd-abbr" style="color:#d97706">RT</span>
+      <span class="pd-label">Route</span>
+    </div>
+    <span class="pd-arrow">&rarr;</span>
+    <div class="pd-step">
+      <span class="pd-abbr" style="color:#16a34a">LLM</span>
+      <span class="pd-label">Infer</span>
+    </div>
+    <span class="pd-arrow">&rarr;</span>
+    <div class="pd-step">
+      <span class="pd-abbr" style="color:#dc2626">VL</span>
+      <span class="pd-label">Validate</span>
+    </div>
+    <span class="pd-arrow">&rarr;</span>
+    <div class="pd-step">
+      <span class="pd-abbr" style="color:#0891b2">ST</span>
+      <span class="pd-label">Store</span>
+    </div>
+  </div>
 
   <h2 id="quick-start">Quick start</h2>
   <p>Install Structure-D with the extras you need:</p>
@@ -96,7 +129,7 @@ async def main():
 
     for result in results:
         print(result.structured_output)
-        # → &#123;"vendor": "Acme Corp", "invoice_number": "INV-001", "total_amount": 1240.00, ...&#125;
+        # &#123;"vendor": "Acme Corp", "invoice_number": "INV-001", "total_amount": 1240.00, ...&#125;
 
 asyncio.run(main())</code></pre>
   </div>
@@ -127,6 +160,102 @@ KeyValue = get_schema("key_value")
 pipeline = Pipeline(schema_cls=KeyValue, provider=OpenAIProvider())</code></pre>
   </div>
 
+  <h2 id="use-cases">Common use cases</h2>
+  <p>Structure-D is built for any task where you need to pull structured fields out of a document.</p>
+
+  <div class="use-cases-grid">
+    <div class="use-case-card">
+      <h4 class="uc-title">Invoice &amp; receipt processing</h4>
+      <p class="uc-desc">Extract vendor name, line items, totals, dates, and tax information from PDF or scanned invoices.</p>
+      <span class="uc-formats">PDF &middot; PNG &middot; JPEG</span>
+    </div>
+    <div class="use-case-card">
+      <h4 class="uc-title">Contract analysis</h4>
+      <p class="uc-desc">Pull clauses, parties, dates, obligations, and termination conditions from legal documents.</p>
+      <span class="uc-formats">PDF &middot; DOCX</span>
+    </div>
+    <div class="use-case-card">
+      <h4 class="uc-title">Form digitisation</h4>
+      <p class="uc-desc">Convert paper forms, questionnaires, and survey responses into structured JSON records.</p>
+      <span class="uc-formats">PDF &middot; PNG &middot; JPEG &middot; HTML</span>
+    </div>
+    <div class="use-case-card">
+      <h4 class="uc-title">Report extraction</h4>
+      <p class="uc-desc">Parse financial reports, research papers, and annual filings into tables, summaries, and key metrics.</p>
+      <span class="uc-formats">PDF &middot; DOCX &middot; XLSX</span>
+    </div>
+    <div class="use-case-card">
+      <h4 class="uc-title">Email triage</h4>
+      <p class="uc-desc">Classify incoming emails, extract intent, priority, named entities, and structured action items.</p>
+      <span class="uc-formats">EML &middot; MSG &middot; HTML</span>
+    </div>
+    <div class="use-case-card">
+      <h4 class="uc-title">Knowledge base RAG</h4>
+      <p class="uc-desc">Build a retrieval-augmented QA system over a document corpus with built-in vector indexing.</p>
+      <span class="uc-formats">PDF &middot; DOCX &middot; HTML &middot; TXT</span>
+    </div>
+  </div>
+
+  <h2 id="core-concepts">Core concepts</h2>
+
+  <h3>Schema-driven extraction</h3>
+  <p>
+    Every extraction job is backed by a Pydantic model. Structure-D converts your model to a JSON Schema
+    and passes it to the LLM as a <code>guided_json</code> constraint (vLLM) or a tool-use parameter
+    (OpenAI, Anthropic). The model is forced to produce output that matches your type signature.
+  </p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">from pydantic import BaseModel, Field
+
+class Contract(BaseModel):
+    parties: list[str] = Field(description="Names of all signing parties")
+    effective_date: str = Field(description="Contract start date in YYYY-MM-DD format")
+    termination_clause: str | None = Field(None, description="Termination conditions verbatim")
+    jurisdiction: str = Field(description="Governing law / jurisdiction")</code></pre>
+  </div>
+
+  <h3>Automatic format detection</h3>
+  <p>
+    When you pass a <code>Path</code> to <code>pipeline.run()</code>, Structure-D inspects the file
+    extension and MIME type to select the right parser automatically. You can also specify a parser explicitly.
+  </p>
+
+  <div class="prose-table-wrapper">
+    <table class="prose-table">
+      <thead>
+        <tr>
+          <th>Extension</th>
+          <th>Default parser</th>
+          <th>What gets extracted</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><code>.pdf</code></td><td><code>pymupdf</code></td><td>Text, tables, images (per page)</td></tr>
+        <tr><td><code>.pdf</code> (scanned)</td><td><code>ocr_pdf</code></td><td>OCR text via Tesseract</td></tr>
+        <tr><td><code>.png</code>, <code>.jpg</code></td><td><code>tesseract_image</code></td><td>OCR text from images</td></tr>
+        <tr><td><code>.html</code>, <code>.htm</code></td><td><code>html</code></td><td>Main content, tables, links</td></tr>
+        <tr><td><code>.docx</code></td><td><code>docx</code></td><td>Paragraphs, tables, styles</td></tr>
+        <tr><td><code>.xlsx</code></td><td><code>xlsx</code></td><td>Sheet data, cell values</td></tr>
+        <tr><td><code>.pptx</code></td><td><code>pptx</code></td><td>Slide text, notes</td></tr>
+        <tr><td><code>.eml</code>, <code>.msg</code></td><td><code>email</code></td><td>Subject, body, headers, attachments</td></tr>
+        <tr><td><code>.txt</code>, <code>.md</code></td><td><code>plaintext</code></td><td>Raw text</td></tr>
+        <tr><td><code>.csv</code></td><td><code>plaintext</code></td><td>Raw text (structured CSV rows)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Validation and automatic retry</h3>
+  <p>
+    After inference, <code>SchemaValidator</code> runs the raw LLM output through Pydantic. If validation
+    fails, <code>RetryHandler</code> sends the model a new prompt that includes the original output,
+    the Pydantic error messages, and a reminder of the schema. The default retry budget is 3 attempts.
+  </p>
+
   <h2 id="next-steps">Next steps</h2>
   <ul>
     <li><a href={`${base}docs/installation`}>Installation</a> — detailed install options, extras, and Rust CLI setup</li>
@@ -135,4 +264,228 @@ pipeline = Pipeline(schema_cls=KeyValue, provider=OpenAIProvider())</code></pre>
     <li><a href={`${base}docs/guides/advanced`}>Advanced Usage</a> — batch processing, RAG, custom providers</li>
     <li><a href={`${base}docs/api/core`}>Core Pipeline API</a> — full API reference</li>
   </ul>
+
+  <h2 id="faq">FAQ</h2>
+
+  <details class="faq-item">
+    <summary class="faq-q">Does Structure-D require a GPU?</summary>
+    <p class="faq-a">
+      No. When using cloud providers (OpenAI, Anthropic, Gemini), Structure-D runs entirely on CPU.
+      The <code>vllm</code> and <code>inference</code> extras are only needed if you want to run
+      local models on your own GPU server via vLLM.
+    </p>
+  </details>
+
+  <details class="faq-item">
+    <summary class="faq-q">Can I use it without an OpenAI API key?</summary>
+    <p class="faq-a">
+      Yes. Use <code>OllamaProvider</code> to run open-weight models locally via Ollama (CPU or GPU),
+      or <code>VLLMProvider</code> to point at a self-hosted vLLM server. No external API key required.
+    </p>
+  </details>
+
+  <details class="faq-item">
+    <summary class="faq-q">What happens if the LLM returns invalid JSON?</summary>
+    <p class="faq-a">
+      <code>SchemaValidator</code> detects the validation failure and <code>RetryHandler</code>
+      automatically retries with a corrective prompt. The prompt includes the original (invalid) response,
+      the exact Pydantic validation errors, and the schema definition.
+      After <code>max_retries</code> (default 3) attempts, the result is marked <code>is_valid = False</code>
+      and returned with the <code>validation_errors</code> field populated.
+    </p>
+  </details>
+
+  <details class="faq-item">
+    <summary class="faq-q">How do I process an entire folder of PDFs?</summary>
+    <p class="faq-a">
+      Use <code>pipeline.run_many(files, max_concurrent=8)</code> where <code>files</code> is a list of <code>Path</code> objects.
+      Structure-D processes them concurrently using <code>asyncio.gather</code> with a semaphore limit.
+    </p>
+    <div class="code-block-wrapper" style="margin-top:10px">
+      <div class="code-block-header">
+        <span class="code-block-lang">python</span>
+        <button class="code-block-copy">Copy</button>
+      </div>
+      <pre><code class="language-python">files = list(Path("invoices/").glob("*.pdf"))
+results = await pipeline.run_many(files, max_concurrent=8, save_format="jsonl")</code></pre>
+    </div>
+  </details>
+
+  <details class="faq-item">
+    <summary class="faq-q">Is the output deterministic?</summary>
+    <p class="faq-a">
+      Structure-D sets <code>temperature=0.0</code> by default, making outputs as deterministic as possible.
+      vLLM's <code>guided_json</code> mode further constrains output to the exact token space of your
+      schema, eliminating structural variation entirely. Cloud providers (OpenAI, Anthropic) are
+      near-deterministic at temperature 0.
+    </p>
+  </details>
+
+  <details class="faq-item">
+    <summary class="faq-q">Can I use my own custom file format?</summary>
+    <p class="faq-a">
+      Yes. Extend <code>BaseParser</code>, implement <code>async def parse(self, file_path)</code>, and register
+      your parser with the <code>ParserRegistry</code>. See the
+      <a href={`${base}docs/guides/advanced#custom-parsers`}>Custom parsers guide</a>.
+    </p>
+  </details>
+
+  <details class="faq-item">
+    <summary class="faq-q">Does it support multi-page documents?</summary>
+    <p class="faq-a">
+      Yes. PDF and Office parsers extract text per page. The <code>Chunker</code> then splits the
+      document into overlapping segments. Each chunk is sent to the LLM independently, and
+      <code>pipeline.run()</code> returns one <code>ExtractionResult</code> per chunk.
+      For most documents you'll receive a list with a single result.
+    </p>
+  </details>
+
+  <details class="faq-item">
+    <summary class="faq-q">How do I handle scanned PDFs vs. text PDFs?</summary>
+    <p class="faq-a">
+      Set <code>parser_name="auto"</code> (the default) and Structure-D will try <code>pymupdf</code> first.
+      If the extracted text is suspiciously short (likely a scanned image), it automatically falls back
+      to <code>ocr_pdf</code> using Tesseract.
+      You can also force OCR explicitly: <code>pipeline.run(path, parser_name="ocr_pdf")</code>.
+    </p>
+  </details>
 </DocsLayout>
+
+<style>
+  /* Pipeline mini-diagram */
+  .pipeline-diagram {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 20px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-default);
+    border-radius: 10px;
+    margin: var(--space-4) 0;
+  }
+
+  .pd-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    background: var(--bg-root);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 10px 14px;
+    min-width: 64px;
+  }
+
+  .pd-abbr {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+
+  .pd-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+
+  .pd-arrow {
+    color: var(--border-bright);
+    font-size: var(--text-lg);
+    margin: 0 2px;
+    margin-bottom: 18px;
+  }
+
+  /* Use case cards */
+  .use-cases-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin: var(--space-4) 0;
+  }
+
+  .use-case-card {
+    padding: 16px;
+    border: 1px solid var(--border-default);
+    border-radius: 10px;
+    background: var(--bg-secondary);
+    transition: border-color var(--duration-fast);
+  }
+
+  .use-case-card:hover { border-color: var(--accent); }
+
+  .uc-title {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+  }
+
+  .uc-desc {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin-bottom: 8px;
+  }
+
+  .uc-formats {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--accent);
+    background: var(--accent-subtle);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+
+  /* FAQ */
+  .faq-item {
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    overflow: hidden;
+  }
+
+  .faq-q {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+    list-style: none;
+    background: var(--bg-secondary);
+    transition: background var(--duration-fast);
+    user-select: none;
+  }
+
+  .faq-q:hover { background: var(--bg-elevated); }
+
+  .faq-q::before {
+    content: '+';
+    font-family: var(--font-mono);
+    font-size: 16px;
+    color: var(--accent);
+    flex-shrink: 0;
+    transition: transform var(--duration-fast);
+  }
+
+  details[open] .faq-q::before { content: '-'; }
+
+  .faq-a {
+    padding: 14px 16px;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    line-height: 1.7;
+    border-top: 1px solid var(--border-default);
+    background: var(--bg-root);
+  }
+
+  @media (max-width: 640px) {
+    .use-cases-grid { grid-template-columns: 1fr; }
+    .pipeline-diagram { gap: 4px; padding: 14px 12px; }
+    .pd-step { min-width: 52px; padding: 8px 10px; }
+  }
+</style>
