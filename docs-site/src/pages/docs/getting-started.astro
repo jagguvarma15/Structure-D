@@ -1,0 +1,138 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+
+const base = import.meta.env.BASE_URL;
+
+const toc = [
+  { text: 'What is Structure-D?', id: 'what-is-structure-d', depth: 2 },
+  { text: 'How it works', id: 'how-it-works', depth: 2 },
+  { text: 'Quick start', id: 'quick-start', depth: 2 },
+  { text: 'Next steps', id: 'next-steps', depth: 2 },
+];
+---
+
+<DocsLayout
+  title="Getting Started"
+  description="Structure-D in 5 minutes — from installation to your first extraction."
+  toc={toc}
+  editPath="/docs/getting-started.astro"
+  next={{ label: 'Installation', href: `${base}docs/installation` }}
+>
+  <h2 id="what-is-structure-d">What is Structure-D?</h2>
+  <p>
+    <strong>Structure-D</strong> is a modular pipeline framework that converts unstructured documents
+    (PDFs, images, HTML, DOCX, and more) into <strong>validated, schema-constrained structured data</strong> using LLMs.
+  </p>
+  <p>
+    It is designed around three principles:
+  </p>
+  <ul>
+    <li><strong>Format-focused, not domain-specific</strong> — Structure-D handles file formats, not document types. You define what you want to extract.</li>
+    <li><strong>Schema-driven</strong> — Your Pydantic model is the contract. Structure-D guarantees the output matches it.</li>
+    <li><strong>Async-first</strong> — Every I/O operation is <code>async</code>. Process thousands of documents in parallel.</li>
+  </ul>
+
+  <div class="callout info">
+    <span class="callout-icon">ℹ️</span>
+    <div class="callout-body">
+      <p class="callout-title">Currently in beta</p>
+      <p class="callout-content">Structure-D v0.2.0 is production-ready for Phase 1 features. ETL scheduling and HITL workflows are on the roadmap for v0.3.0.</p>
+    </div>
+  </div>
+
+  <h2 id="how-it-works">How it works</h2>
+  <p>Every document flows through a six-stage pipeline:</p>
+  <ol>
+    <li><strong>Ingestion</strong> — a format-appropriate parser extracts raw text, tables, and images from your file</li>
+    <li><strong>Preprocessing</strong> — text is normalized, cleaned, and chunked into optimal-size segments</li>
+    <li><strong>Model Routing</strong> — the router selects the best registered model for your task</li>
+    <li><strong>Inference</strong> — the LLM provider generates structured output constrained to your schema</li>
+    <li><strong>Validation</strong> — every output is validated against the Pydantic model; invalid outputs are retried</li>
+    <li><strong>Storage</strong> — results are written to JSONL, CSV, or a database destination</li>
+  </ol>
+
+  <h2 id="quick-start">Quick start</h2>
+  <p>Install Structure-D with the extras you need:</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">bash</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-bash">pip install "structure-d[ingestion,api,llm]"</code></pre>
+  </div>
+
+  <p>Then extract structured data from any document:</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-filename">quickstart.py</span>
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">import asyncio
+from pathlib import Path
+from pydantic import BaseModel
+from structure_d.pipeline import Pipeline
+from structure_d.inference.providers import OpenAIProvider
+
+# 1. Define your extraction schema as a Pydantic model
+class Invoice(BaseModel):
+    vendor: str
+    invoice_number: str
+    total_amount: float
+    line_items: list[str]
+    due_date: str | None = None
+
+# 2. Create the pipeline
+async def main():
+    pipeline = Pipeline(
+        schema_cls=Invoice,
+        provider=OpenAIProvider(),   # or AnthropicProvider(), OllamaProvider(), VLLMProvider()
+    )
+
+    # 3. Run on a file — format is auto-detected
+    results = await pipeline.run(Path("invoice.pdf"))
+
+    for result in results:
+        print(result.structured_output)
+        # → &#123;"vendor": "Acme Corp", "invoice_number": "INV-001", "total_amount": 1240.00, ...&#125;
+
+asyncio.run(main())</code></pre>
+  </div>
+
+  <p>
+    Structure-D automatically detects the file format, selects the appropriate parser,
+    chunks the content, runs inference, and validates the output — retrying up to 3 times
+    if the model produces invalid JSON.
+  </p>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div class="callout-body">
+      <p class="callout-title">Use built-in schemas</p>
+      <p class="callout-content">Don't want to define a schema? Use one of the built-ins: <code>key_value</code>, <code>table</code>, <code>entity</code>, <code>form</code>, <code>classification</code>, or <code>summary</code>.</p>
+    </div>
+  </div>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">from structure_d.schemas.generic import get_schema
+
+# Use a built-in schema by name
+KeyValue = get_schema("key_value")
+pipeline = Pipeline(schema_cls=KeyValue, provider=OpenAIProvider())</code></pre>
+  </div>
+
+  <h2 id="next-steps">Next steps</h2>
+  <ul>
+    <li><a href={`${base}docs/installation`}>Installation</a> — detailed install options, extras, and Rust CLI setup</li>
+    <li><a href={`${base}docs/configuration`}>Configuration</a> — configure providers, models, chunking, and storage</li>
+    <li><a href={`${base}docs/guides/basic-usage`}>Basic Usage Guide</a> — more extraction examples across file formats</li>
+    <li><a href={`${base}docs/guides/advanced`}>Advanced Usage</a> — batch processing, RAG, custom providers</li>
+    <li><a href={`${base}docs/api/core`}>Core Pipeline API</a> — full API reference</li>
+  </ul>
+</DocsLayout>

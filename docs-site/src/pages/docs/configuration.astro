@@ -1,0 +1,246 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+
+const base = import.meta.env.BASE_URL;
+
+const toc = [
+  { text: 'Config file', id: 'config-file', depth: 2 },
+  { text: 'Environment variables', id: 'env-vars', depth: 2 },
+  { text: 'Inference providers', id: 'inference', depth: 2 },
+  { text: 'Ingestion & parsing', id: 'ingestion', depth: 2 },
+  { text: 'Preprocessing', id: 'preprocessing', depth: 2 },
+  { text: 'Validation & retry', id: 'validation', depth: 2 },
+  { text: 'Storage', id: 'storage', depth: 2 },
+  { text: 'Full reference', id: 'full-reference', depth: 2 },
+];
+---
+
+<DocsLayout
+  title="Configuration"
+  description="Configure inference providers, parsers, chunking strategies, validation retry, and storage destinations."
+  toc={toc}
+  editPath="/docs/configuration.astro"
+  prev={{ label: 'Installation', href: `${base}docs/installation` }}
+  next={{ label: 'Basic Usage', href: `${base}docs/guides/basic-usage` }}
+>
+  <h2 id="config-file">Config file</h2>
+  <p>
+    Structure-D loads configuration from a YAML file. By default it reads
+    <code>configs/default.yaml</code> relative to the working directory.
+  </p>
+  <p>Pass a custom path when creating the pipeline:</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">pipeline = Pipeline(
+    schema_cls=MySchema,
+    config_path="configs/production.yaml",
+)</code></pre>
+  </div>
+
+  <p>Or load the settings object directly:</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">from structure_d.config import load_settings
+
+settings = load_settings("configs/production.yaml")</code></pre>
+  </div>
+
+  <h2 id="env-vars">Environment variables</h2>
+  <p>
+    Every setting can be overridden via environment variables using the <code>SD_</code> prefix
+    and <code>__</code> as a nested delimiter.
+  </p>
+
+  <div class="prose-table-wrapper">
+    <table class="prose-table">
+      <thead>
+        <tr>
+          <th>Env var</th>
+          <th>YAML path</th>
+          <th>Example</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><code>SD_LOG_LEVEL</code></td><td><code>log_level</code></td><td><code>DEBUG</code></td></tr>
+        <tr><td><code>SD_INFERENCE__PROVIDER__PROVIDER</code></td><td><code>inference.provider.provider</code></td><td><code>openai</code></td></tr>
+        <tr><td><code>SD_INFERENCE__PROVIDER__VLLM__API_BASE</code></td><td><code>inference.provider.vllm.api_base</code></td><td><code>http://localhost:8000</code></td></tr>
+        <tr><td><code>SD_VALIDATION__MAX_RETRIES</code></td><td><code>validation.max_retries</code></td><td><code>5</code></td></tr>
+        <tr><td><code>SD_STORAGE__DEFAULT_FORMAT</code></td><td><code>storage.default_format</code></td><td><code>csv</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="inference">Inference providers</h2>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-filename">configs/default.yaml</span>
+      <span class="code-block-lang">yaml</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-yaml">inference:
+  provider:
+    provider: "vllm"                  # vllm | openai | anthropic | gemini | ollama
+    fallback_provider: "anthropic"    # fallback on InferenceError (optional)
+
+    vllm:
+      api_base: "http://localhost:8000"
+      api_key: null
+      model: null                     # uses model routing if null
+
+    openai:
+      api_key: null                   # reads OPENAI_API_KEY from env
+      model: "gpt-4o"
+      base_url: null                  # override for Azure OpenAI
+
+    anthropic:
+      api_key: null                   # reads ANTHROPIC_API_KEY
+      model: "claude-3-5-sonnet-20241022"
+
+    gemini:
+      api_key: null                   # reads GOOGLE_API_KEY
+      model: "gemini-1.5-pro"
+
+    ollama:
+      base_url: "http://localhost:11434"
+      model: "llama3.1:8b"</code></pre>
+  </div>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div class="callout-body">
+      <p class="callout-title">Automatic fallback</p>
+      <p class="callout-content">When <code>fallback_provider</code> is set, Structure-D wraps both providers in a <code>FallbackProvider</code> that silently retries on <code>InferenceError</code>. No code changes required.</p>
+    </div>
+  </div>
+
+  <h2 id="ingestion">Ingestion & parsing</h2>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">yaml</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-yaml">ingestion:
+  default_parser: "auto"      # auto | pymupdf | pdfplumber | unstructured | docling
+  ocr_engine: "tesseract"     # tesseract | easyocr
+  max_concurrent: 4           # parallel ingest workers
+  timeout_seconds: 30
+
+  connectors:
+    type: "local"             # local | s3 | gcs | azure | sftp
+    # S3 example:
+    # type: "s3"
+    # bucket: "my-bucket"
+    # prefix: "documents/"
+    # region: "us-east-1"</code></pre>
+  </div>
+
+  <h2 id="preprocessing">Preprocessing</h2>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">yaml</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-yaml">preprocessing:
+  normalize:
+    normalize_unicode: true
+    strip_boilerplate: true    # remove page numbers, headers/footers
+    collapse_whitespace: true
+
+  chunking:
+    strategy: "semantic"       # fixed | sentence | heading | semantic
+    max_tokens: 1024
+    overlap_tokens: 128
+    heading_level: 2           # for "heading" strategy: H1, H2, etc.</code></pre>
+  </div>
+
+  <div class="prose-table-wrapper">
+    <table class="prose-table">
+      <thead>
+        <tr>
+          <th>Strategy</th>
+          <th>Description</th>
+          <th>Best for</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>fixed</code></td>
+          <td>Split every N tokens with overlap</td>
+          <td>Simple documents, maximum control</td>
+        </tr>
+        <tr>
+          <td><code>sentence</code></td>
+          <td>Split on sentence boundaries</td>
+          <td>Prose, articles</td>
+        </tr>
+        <tr>
+          <td><code>heading</code></td>
+          <td>Split on Markdown/document headings</td>
+          <td>Structured reports, documentation</td>
+        </tr>
+        <tr>
+          <td><code>semantic</code></td>
+          <td>Heading-aware sentence chunking (default)</td>
+          <td>Mixed documents, best overall quality</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="validation">Validation & retry</h2>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">yaml</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-yaml">validation:
+  max_retries: 3          # LLM retries on schema validation failure
+  strict_mode: false      # if true, raises on first validation error</code></pre>
+  </div>
+
+  <p>
+    On each failed validation attempt, Structure-D sends the model a refined prompt that includes
+    the original response, the validation errors, and the schema definition — significantly
+    improving recovery rates on subsequent attempts.
+  </p>
+
+  <h2 id="storage">Storage</h2>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">yaml</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-yaml">storage:
+  default_format: "jsonl"     # jsonl | csv | database
+  output_dir: "output/"
+
+  database:
+    url: null                 # e.g. "postgresql+asyncpg://user:pass@host/db"
+    table: "extractions"
+
+  # Cloud destinations (optional)
+  destination:
+    type: null                # snowflake | bigquery | mysql | redshift</code></pre>
+  </div>
+
+  <h2 id="full-reference">Full reference</h2>
+  <p>
+    The complete default configuration with all available settings lives at
+    <a href="https://github.com/JagadeshVarma/Structure-D/blob/main/configs/default.yaml" target="_blank" rel="noopener">
+      <code>configs/default.yaml</code>
+    </a> in the repository.
+  </p>
+</DocsLayout>

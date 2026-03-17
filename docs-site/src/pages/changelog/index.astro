@@ -1,0 +1,351 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Navbar from '../../components/Navbar.astro';
+import Footer from '../../components/Footer.astro';
+import SearchModal from '../../components/SearchModal.astro';
+import '../../styles/global.css';
+
+const base = import.meta.env.BASE_URL;
+
+const releases = [
+  {
+    version: 'v0.2.0',
+    date: 'March 2026',
+    status: 'latest',
+    changes: [
+      { type: 'added',   text: 'RAG indexing layer: DocumentReader, VectorStoreIndex, SummaryIndex, QueryEngine' },
+      { type: 'added',   text: 'LlamaIndex-compatible API (load_and_chunk, as_query_engine)' },
+      { type: 'added',   text: 'Rust CLI with extract, batch, formats, models, schemas, config, providers subcommands' },
+      { type: 'added',   text: 'FallbackProvider for transparent provider chaining' },
+      { type: 'added',   text: 'Cloud destination writers: Snowflake, BigQuery, MySQL, Redshift' },
+      { type: 'added',   text: 'Monitoring: Prometheus metrics + OpenTelemetry tracing' },
+      { type: 'improved','text': 'Chunker now supports semantic strategy (heading-aware sentence splitting)' },
+      { type: 'improved','text': 'SchemaValidator multi-step extraction: JSON → code fence → block heuristics' },
+      { type: 'fixed',   text: 'OCR parser encoding issue on non-ASCII documents' },
+      { type: 'fixed',   text: 'EmailParser failing on malformed MIME boundaries' },
+    ],
+  },
+  {
+    version: 'v0.1.0',
+    date: 'January 2026',
+    status: 'stable',
+    changes: [
+      { type: 'added',   text: 'Core six-stage pipeline: Ingestion → Preprocessing → Routing → Inference → Validation → Storage' },
+      { type: 'added',   text: 'Format parsers: PyMuPDF, PDFPlumber, OCR-PDF, Tesseract image, HTML, DOCX, XLSX, PPTX, email, transcript, plain text' },
+      { type: 'added',   text: 'LLM providers: vLLM (guided_json), OpenAI, Anthropic (tool-use), Gemini, Ollama' },
+      { type: 'added',   text: 'Built-in schemas: key_value, table, entity, classification, summary, form, document_structure, generic' },
+      { type: 'added',   text: 'Model registry with 7 pre-registered models and automatic task-based routing' },
+      { type: 'added',   text: 'Source connectors: Local, S3, GCS, Azure Blob Storage, SFTP' },
+      { type: 'added',   text: 'FastAPI service with /extract, /health, /models, /schemas, /formats endpoints' },
+      { type: 'added',   text: 'JSONL and CSV output writers' },
+      { type: 'added',   text: 'SchemaValidator + RetryHandler with up to N LLM retries on validation failure' },
+      { type: 'added',   text: '110 passing unit and integration tests' },
+    ],
+  },
+];
+
+const typeConfig = {
+  added:    { label: 'Added',    color: 'var(--success)',  bg: 'rgba(52, 211, 153, 0.1)' },
+  improved: { label: 'Improved', color: 'var(--accent)',   bg: 'rgba(56, 189, 248, 0.1)' },
+  fixed:    { label: 'Fixed',    color: 'var(--warning)',  bg: 'rgba(251, 191, 36, 0.1)' },
+  breaking: { label: 'Breaking', color: 'var(--error)',    bg: 'rgba(248, 113, 113, 0.1)' },
+};
+---
+
+<BaseLayout title="Changelog" description="Version history and release notes for Structure-D.">
+  <Navbar activePath="/changelog" />
+
+  <main class="changelog-main">
+    <div class="container">
+      <header class="changelog-header reveal">
+        <p class="label-mono">Changelog</p>
+        <h1 class="changelog-title">Release history</h1>
+        <p class="changelog-desc">All notable changes to Structure-D are documented here.</p>
+      </header>
+
+      <div class="releases">
+        {releases.map((release, ri) => (
+          <article class="release reveal" style={`transition-delay: ${ri * 100}ms`}>
+            <div class="release-timeline">
+              <div class="timeline-dot" class:list={[{ latest: release.status === 'latest' }]}></div>
+              {ri < releases.length - 1 && <div class="timeline-line"></div>}
+            </div>
+
+            <div class="release-content">
+              <div class="release-header">
+                <div class="release-meta">
+                  <h2 class="release-version">{release.version}</h2>
+                  <time class="release-date">{release.date}</time>
+                  {release.status === 'latest' && (
+                    <span class="release-badge-latest">Latest</span>
+                  )}
+                </div>
+                <a
+                  href={`https://github.com/JagadeshVarma/Structure-D/releases/tag/${release.version}`}
+                  target="_blank"
+                  rel="noopener"
+                  class="release-github-link"
+                >
+                  View on GitHub ↗
+                </a>
+              </div>
+
+              <ul class="release-changes">
+                {release.changes.map((change) => {
+                  const cfg = typeConfig[change.type] || typeConfig.added;
+                  return (
+                    <li class="change-item">
+                      <span
+                        class="change-badge"
+                        style={`color: ${cfg.color}; background: ${cfg.bg}; border: 1px solid ${cfg.color}30`}
+                      >
+                        {cfg.label}
+                      </span>
+                      <span class="change-text">{change.text}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </article>
+        ))}
+      </div>
+
+      <div class="roadmap reveal">
+        <h2 class="roadmap-title">Upcoming</h2>
+        <div class="roadmap-grid">
+          <div class="roadmap-card">
+            <span class="roadmap-version">v0.3.0</span>
+            <h3 class="roadmap-item-title">ETL Pipeline Framework</h3>
+            <p class="roadmap-item-desc">
+              Scheduled batch processing, YAML workflow definitions, enhanced analytics (success rates, field fill rates, cost tracking).
+            </p>
+          </div>
+          <div class="roadmap-card">
+            <span class="roadmap-version">v0.4.0</span>
+            <h3 class="roadmap-item-title">Human-in-the-Loop</h3>
+            <p class="roadmap-item-desc">
+              HITL review workflows, API authentication + rate limiting, monitoring dashboard, versioned prompt template management.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <Footer />
+  <SearchModal />
+</BaseLayout>
+
+<style>
+  .changelog-main {
+    padding-top: calc(var(--nav-height) + var(--space-8));
+    padding-bottom: var(--space-8);
+    min-height: 100vh;
+  }
+
+  .changelog-header {
+    max-width: 640px;
+    margin-bottom: var(--space-7);
+  }
+
+  .changelog-title {
+    font-family: var(--font-display);
+    font-size: var(--text-3xl);
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+    margin-top: 12px;
+  }
+
+  .changelog-desc {
+    margin-top: 12px;
+    font-size: var(--text-lg);
+    color: var(--text-secondary);
+  }
+
+  .releases {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    max-width: 800px;
+  }
+
+  .release {
+    display: grid;
+    grid-template-columns: 40px 1fr;
+    gap: 0 var(--space-4);
+  }
+
+  .release-timeline {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 6px;
+  }
+
+  .timeline-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid var(--border-default);
+    background: var(--bg-primary);
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+  }
+
+  .timeline-dot.latest {
+    border-color: var(--accent);
+    background: var(--accent-glow);
+    box-shadow: 0 0 10px var(--accent-glow);
+  }
+
+  .timeline-line {
+    flex: 1;
+    width: 1px;
+    background: var(--border-subtle);
+    min-height: 40px;
+    margin: 8px 0;
+  }
+
+  .release-content {
+    padding-bottom: var(--space-6);
+  }
+
+  .release-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+    flex-wrap: wrap;
+  }
+
+  .release-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .release-version {
+    font-family: var(--font-mono);
+    font-size: var(--text-xl);
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+
+  .release-date {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    color: var(--text-dim);
+  }
+
+  .release-badge-latest {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    background: rgba(52, 211, 153, 0.12);
+    color: var(--success);
+    border: 1px solid rgba(52, 211, 153, 0.2);
+    border-radius: 9999px;
+    padding: 2px 8px;
+    font-weight: 500;
+  }
+
+  .release-github-link {
+    font-size: var(--text-xs);
+    color: var(--text-dim);
+    text-decoration: none;
+    transition: color var(--duration-fast);
+    white-space: nowrap;
+    margin-top: 4px;
+  }
+
+  .release-github-link:hover { color: var(--accent); }
+
+  .release-changes {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .change-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .change-badge {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    margin-top: 1px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .change-text {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    line-height: 1.6;
+  }
+
+  .roadmap {
+    margin-top: var(--space-8);
+    max-width: 800px;
+    border-top: 1px solid var(--border-subtle);
+    padding-top: var(--space-6);
+  }
+
+  .roadmap-title {
+    font-size: var(--text-xl);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: var(--space-4);
+  }
+
+  .roadmap-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-3);
+  }
+
+  .roadmap-card {
+    padding: var(--space-4);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    background: var(--bg-secondary);
+  }
+
+  .roadmap-version {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-dim);
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  .roadmap-item-title {
+    font-size: var(--text-base);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+  }
+
+  .roadmap-item-desc {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    line-height: 1.6;
+  }
+
+  @media (max-width: 640px) {
+    .roadmap-grid { grid-template-columns: 1fr; }
+    .release-header { flex-direction: column; }
+  }
+</style>

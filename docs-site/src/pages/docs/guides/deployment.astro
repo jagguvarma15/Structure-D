@@ -1,0 +1,178 @@
+---
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+
+const base = import.meta.env.BASE_URL;
+
+const toc = [
+  { text: 'FastAPI service', id: 'fastapi-service', depth: 2 },
+  { text: 'API endpoints', id: 'api-endpoints', depth: 2 },
+  { text: 'Rust CLI', id: 'rust-cli', depth: 2 },
+  { text: 'Docker', id: 'docker', depth: 2 },
+  { text: 'Environment variables', id: 'env-vars', depth: 2 },
+];
+---
+
+<DocsLayout
+  title="Deployment"
+  description="Deploy Structure-D as a FastAPI HTTP service or use the high-performance Rust CLI."
+  toc={toc}
+  editPath="/docs/guides/deployment.astro"
+  prev={{ label: 'Advanced Usage', href: `${base}docs/guides/advanced` }}
+  next={{ label: 'API Overview', href: `${base}docs/api/overview` }}
+>
+  <h2 id="fastapi-service">FastAPI service</h2>
+  <p>
+    Structure-D ships a production-ready FastAPI application factory.
+    Start it with Uvicorn:
+  </p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">bash</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-bash"># Development
+uvicorn structure_d.api.app:create_app --factory --reload --port 8080
+
+# Production
+uvicorn structure_d.api.app:create_app \
+  --factory \
+  --host 0.0.0.0 \
+  --port 8080 \
+  --workers 4</code></pre>
+  </div>
+
+  <p>Or programmatically:</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">import uvicorn
+from structure_d.api.app import create_app
+
+app = create_app()
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8080)</code></pre>
+  </div>
+
+  <h2 id="api-endpoints">API endpoints</h2>
+  <p>All routes are mounted under <code>/api/v1</code>:</p>
+
+  <div class="prose-table-wrapper">
+    <table class="prose-table">
+      <thead>
+        <tr><th>Method</th><th>Path</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>GET</code></td><td><code>/api/v1/health</code></td><td>Health check</td></tr>
+        <tr><td><code>GET</code></td><td><code>/api/v1/models</code></td><td>List registered models</td></tr>
+        <tr><td><code>GET</code></td><td><code>/api/v1/schemas</code></td><td>List built-in schemas</td></tr>
+        <tr><td><code>GET</code></td><td><code>/api/v1/formats</code></td><td>List supported file formats</td></tr>
+        <tr><td><code>POST</code></td><td><code>/api/v1/extract</code></td><td>Upload a file and extract structured data</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Example extraction request:</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">bash</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-bash">curl -X POST http://localhost:8080/api/v1/extract \
+  -F "file=@invoice.pdf" \
+  -F "schema_name=key_value" \
+  -F "task=extraction" \
+  -F "save_format=jsonl"</code></pre>
+  </div>
+
+  <h2 id="rust-cli">Rust CLI</h2>
+  <p>The CLI provides the same extraction pipeline as a native binary with no Python overhead:</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">bash</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-bash"># Extract from a single file
+structure-d extract invoice.pdf --schema key_value --output output/
+
+# Batch extraction from a directory
+structure-d batch invoices/ --schema key_value --concurrent 8
+
+# List available schemas / models / formats
+structure-d schemas
+structure-d models
+structure-d formats
+
+# Use a custom config
+structure-d extract doc.pdf --config configs/production.yaml</code></pre>
+  </div>
+
+  <h2 id="docker">Docker</h2>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-filename">Dockerfile</span>
+      <span class="code-block-lang">dockerfile</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-dockerfile">FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install system deps for Tesseract OCR (optional)
+RUN apt-get update && apt-get install -y tesseract-ocr && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml .
+RUN pip install --no-cache-dir ".[ingestion,api,llm]"
+
+COPY . .
+
+EXPOSE 8080
+CMD ["uvicorn", "structure_d.api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8080"]</code></pre>
+  </div>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">bash</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-bash">docker build -t structure-d .
+docker run -p 8080:8080 \
+  -e OPENAI_API_KEY=sk-... \
+  -e SD_INFERENCE__PROVIDER__PROVIDER=openai \
+  structure-d</code></pre>
+  </div>
+
+  <h2 id="env-vars">Environment variables</h2>
+
+  <div class="prose-table-wrapper">
+    <table class="prose-table">
+      <thead>
+        <tr><th>Variable</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>OPENAI_API_KEY</code></td><td>OpenAI API key</td></tr>
+        <tr><td><code>ANTHROPIC_API_KEY</code></td><td>Anthropic API key</td></tr>
+        <tr><td><code>GOOGLE_API_KEY</code></td><td>Gemini API key</td></tr>
+        <tr><td><code>SD_INFERENCE__PROVIDER__PROVIDER</code></td><td>Override inference provider</td></tr>
+        <tr><td><code>SD_LOG_LEVEL</code></td><td>Log level: DEBUG / INFO / WARNING / ERROR</td></tr>
+        <tr><td><code>SD_API__PORT</code></td><td>FastAPI server port (default: 8080)</td></tr>
+        <tr><td><code>SD_STORAGE__OUTPUT_DIR</code></td><td>Output directory for saved results</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout warning">
+    <span class="callout-icon">⚠️</span>
+    <div class="callout-body">
+      <p class="callout-title">API authentication is a Phase 3 feature</p>
+      <p class="callout-content">The current FastAPI service has no authentication layer. Do not expose it directly to the internet without a reverse proxy and authentication middleware.</p>
+    </div>
+  </div>
+</DocsLayout>

@@ -1,0 +1,194 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+
+const base = import.meta.env.BASE_URL;
+
+const toc = [
+  { text: 'Requirements', id: 'requirements', depth: 2 },
+  { text: 'Python package', id: 'python-package', depth: 2 },
+  { text: 'Extras reference', id: 'extras-reference', depth: 2 },
+  { text: 'Rust CLI', id: 'rust-cli', depth: 2 },
+  { text: 'From source', id: 'from-source', depth: 2 },
+  { text: 'Verify the install', id: 'verify', depth: 2 },
+];
+---
+
+<DocsLayout
+  title="Installation"
+  description="Install Structure-D via pip with optional extras, or build the Rust CLI from source."
+  toc={toc}
+  editPath="/docs/installation.astro"
+  prev={{ label: 'Getting Started', href: `${base}docs/getting-started` }}
+  next={{ label: 'Configuration', href: `${base}docs/configuration` }}
+>
+  <h2 id="requirements">Requirements</h2>
+  <ul>
+    <li>Python 3.10 or higher</li>
+    <li>pip 23+ (for editable installs with <code>pyproject.toml</code>)</li>
+    <li>Rust 1.80+ (optional — only if building the CLI)</li>
+  </ul>
+
+  <h2 id="python-package">Python package</h2>
+  <p>Install from PyPI (or directly from the repo) with only the extras you need:</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">bash</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-bash"># Minimal — pipeline core only (no parsers, no LLM SDK)
+pip install structure-d
+
+# Recommended for most users
+pip install "structure-d[ingestion,api,llm]"
+
+# Everything
+pip install "structure-d[all]"</code></pre>
+  </div>
+
+  <h2 id="extras-reference">Extras reference</h2>
+
+  <div class="prose-table-wrapper">
+    <table class="prose-table">
+      <thead>
+        <tr>
+          <th>Extra</th>
+          <th>Contents</th>
+          <th>When to use</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>ingestion</code></td>
+          <td>pymupdf, pdfplumber, pytesseract, python-docx, openpyxl, beautifulsoup4</td>
+          <td>Processing PDFs, images, Office files, HTML</td>
+        </tr>
+        <tr>
+          <td><code>llm</code></td>
+          <td>openai ≥1.30, anthropic ≥0.28, google-generativeai ≥0.8</td>
+          <td>Using cloud LLM providers</td>
+        </tr>
+        <tr>
+          <td><code>inference</code></td>
+          <td>vllm ≥0.6, transformers, torch</td>
+          <td>Self-hosted vLLM inference</td>
+        </tr>
+        <tr>
+          <td><code>retrieval</code></td>
+          <td>sentence-transformers, chromadb, langchain, llama-index</td>
+          <td>RAG pipelines and vector search</td>
+        </tr>
+        <tr>
+          <td><code>storage</code></td>
+          <td>sqlalchemy, asyncpg, pgvector, asyncmy</td>
+          <td>Writing to databases</td>
+        </tr>
+        <tr>
+          <td><code>connectors</code></td>
+          <td>boto3, google-cloud-storage, azure-storage-blob, paramiko</td>
+          <td>Reading from S3, GCS, Azure, SFTP</td>
+        </tr>
+        <tr>
+          <td><code>destinations</code></td>
+          <td>snowflake-connector-python, google-cloud-bigquery</td>
+          <td>Writing to Snowflake, BigQuery</td>
+        </tr>
+        <tr>
+          <td><code>api</code></td>
+          <td>fastapi, uvicorn, python-multipart</td>
+          <td>Running the HTTP service</td>
+        </tr>
+        <tr>
+          <td><code>monitoring</code></td>
+          <td>prometheus-client, opentelemetry</td>
+          <td>Metrics and tracing</td>
+        </tr>
+        <tr>
+          <td><code>dev</code></td>
+          <td>pytest, pytest-asyncio, ruff, mypy, pre-commit</td>
+          <td>Development and testing</td>
+        </tr>
+        <tr>
+          <td><code>all</code></td>
+          <td>All of the above</td>
+          <td>Full feature set</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="rust-cli">Rust CLI</h2>
+  <p>
+    The <code>structure-d</code> CLI is a native Rust binary for high-throughput batch extraction.
+    It ships the same pipeline logic without the Python overhead.
+  </p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">bash</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-bash"># Build with Cargo (requires Rust 1.80+)
+cargo install --path cli/
+
+# Or use the Makefile shortcut
+make install</code></pre>
+  </div>
+
+  <p>Verify the CLI is available:</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">bash</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-bash">structure-d --version
+# structure-d 0.2.0
+
+structure-d formats   # list supported file formats
+structure-d models    # list registered models</code></pre>
+  </div>
+
+  <h2 id="from-source">From source</h2>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">bash</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-bash">git clone https://github.com/JagadeshVarma/Structure-D.git
+cd Structure-D
+
+# Set up virtual env
+python -m venv .venv
+source .venv/bin/activate
+
+# Install in editable mode with all extras
+pip install -e ".[all]"
+
+# Build Rust CLI
+make install</code></pre>
+  </div>
+
+  <h2 id="verify">Verify the install</h2>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">bash</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-bash">python -c "import structure_d; print(structure_d.__version__)"
+# 0.2.0
+
+# Run the test suite
+pytest tests/ -v -m "not slow and not integration"</code></pre>
+  </div>
+
+  <div class="callout info">
+    <span class="callout-icon">ℹ️</span>
+    <div class="callout-body">
+      <p class="callout-title">OCR dependencies</p>
+      <p class="callout-content">The <code>tesseract_image</code> and <code>ocr_pdf</code> parsers require Tesseract to be installed on your system: <code>brew install tesseract</code> on macOS or <code>apt install tesseract-ocr</code> on Linux.</p>
+    </div>
+  </div>
+</DocsLayout>

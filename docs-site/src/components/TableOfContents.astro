@@ -1,0 +1,125 @@
+---
+export interface TOCItem {
+  text: string;
+  id: string;
+  depth: number;
+}
+
+export interface Props {
+  items: TOCItem[];
+}
+
+const { items } = Astro.props;
+---
+
+{items.length > 1 && (
+  <aside class="toc" aria-label="Table of contents">
+    <div class="toc-inner">
+      <p class="toc-title">On this page</p>
+      <nav>
+        <ul class="toc-list" role="list">
+          {items.map((item) => (
+            <li class:list={['toc-item', `toc-depth-${item.depth}`]}>
+              <a href={`#${item.id}`} class="toc-link" data-toc-id={item.id}>
+                {item.text}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+    </div>
+  </aside>
+)}
+
+<script>
+  const tocLinks = document.querySelectorAll('.toc-link');
+  if (tocLinks.length > 0) {
+    const headings = Array.from(tocLinks).map((link) => {
+      const id = link.dataset.tocId;
+      return id ? document.getElementById(id) : null;
+    }).filter(Boolean);
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            tocLinks.forEach((link) => link.classList.remove('active'));
+            const active = document.querySelector(`.toc-link[data-toc-id="${entry.target.id}"]`);
+            active?.classList.add('active');
+          }
+        });
+      },
+      {
+        rootMargin: '-72px 0px -60% 0px',
+        threshold: 0,
+      }
+    );
+
+    headings.forEach((h) => observer.observe(h));
+  }
+</script>
+
+<style>
+  .toc {
+    width: var(--toc-width);
+    flex-shrink: 0;
+  }
+
+  .toc-inner {
+    position: sticky;
+    top: calc(var(--nav-height) + 24px);
+    max-height: calc(100vh - var(--nav-height) - 48px);
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+
+  .toc-inner::-webkit-scrollbar { display: none; }
+
+  .toc-title {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+  }
+
+  .toc-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .toc-link {
+    display: block;
+    font-size: var(--text-xs);
+    line-height: 1.5;
+    color: var(--text-dim);
+    text-decoration: none;
+    padding: 3px 0;
+    border-left: 1px solid var(--border-subtle);
+    padding-left: 12px;
+    transition: all var(--duration-fast) var(--ease-in-out);
+  }
+
+  .toc-link:hover {
+    color: var(--text-secondary);
+    border-left-color: var(--border-default);
+  }
+
+  .toc-link.active {
+    color: var(--accent);
+    border-left-color: var(--accent);
+    font-weight: 500;
+  }
+
+  .toc-depth-3 .toc-link,
+  .toc-item.toc-depth-3 .toc-link {
+    padding-left: 22px;
+  }
+
+  @media (max-width: 1200px) {
+    .toc { display: none; }
+  }
+</style>

@@ -1,0 +1,337 @@
+---
+export interface Props {
+  currentPath: string;
+}
+const { currentPath } = Astro.props;
+const base = import.meta.env.BASE_URL;
+
+interface NavItem {
+  label: string;
+  href: string;
+}
+
+interface NavGroup {
+  title: string;
+  items: NavItem[];
+}
+
+const nav: NavGroup[] = [
+  {
+    title: 'Getting Started',
+    items: [
+      { label: 'Introduction',   href: `${base}docs/getting-started` },
+      { label: 'Installation',   href: `${base}docs/installation` },
+      { label: 'Configuration',  href: `${base}docs/configuration` },
+    ],
+  },
+  {
+    title: 'Guides',
+    items: [
+      { label: 'Basic Usage',    href: `${base}docs/guides/basic-usage` },
+      { label: 'Advanced Usage', href: `${base}docs/guides/advanced` },
+      { label: 'Deployment',     href: `${base}docs/guides/deployment` },
+    ],
+  },
+  {
+    title: 'API Reference',
+    items: [
+      { label: 'Overview',             href: `${base}docs/api/overview` },
+      { label: 'Core Pipeline',        href: `${base}docs/api/core` },
+      { label: 'Models & Providers',   href: `${base}docs/api/models` },
+      { label: 'Utilities',            href: `${base}docs/api/utilities` },
+    ],
+  },
+];
+
+function isActive(href: string) {
+  return currentPath === href || currentPath === href + '/';
+}
+---
+
+<aside class="sidebar" id="sidebar" aria-label="Documentation navigation">
+  <div class="sidebar-header">
+    <a href={`${base}docs/getting-started`} class="sidebar-home" aria-label="Docs home">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+        <path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8z"/>
+        <path d="M6.5 7.5a.5.5 0 0 1 1 0v3a.5.5 0 0 1-1 0v-3zM8 5a.75.75 0 1 1 0 1.5A.75.75 0 0 1 8 5z"/>
+      </svg>
+      Docs
+    </a>
+    <span class="sidebar-version">v0.2.0</span>
+  </div>
+
+  <div class="sidebar-search">
+    <button class="sidebar-search-btn" id="search-trigger" aria-label="Search docs (Cmd+K)">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+        <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
+      </svg>
+      <span>Search docs...</span>
+      <kbd>⌘K</kbd>
+    </button>
+  </div>
+
+  <nav class="sidebar-nav">
+    {nav.map((group) => (
+      <div class="sidebar-group">
+        <button class="sidebar-group-title" aria-expanded="true">
+          <span>{group.title}</span>
+          <svg class="chevron" width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/>
+          </svg>
+        </button>
+        <ul class="sidebar-group-items" role="list">
+          {group.items.map((item) => (
+            <li>
+              <a
+                href={item.href}
+                class:list={['sidebar-link', { 'sidebar-link-active': isActive(item.href) }]}
+                aria-current={isActive(item.href) ? 'page' : undefined}
+              >
+                {item.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+    ))}
+  </nav>
+</aside>
+
+<!-- Mobile overlay backdrop -->
+<div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
+
+<script>
+  // Collapsible groups
+  document.querySelectorAll('.sidebar-group-title').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const isExpanded = btn.getAttribute('aria-expanded') === 'true';
+      btn.setAttribute('aria-expanded', String(!isExpanded));
+      const list = btn.nextElementSibling;
+      if (list) {
+        list.style.maxHeight = isExpanded ? '0' : list.scrollHeight + 'px';
+        list.style.opacity = isExpanded ? '0' : '1';
+      }
+    });
+  });
+
+  // Initialize heights
+  document.querySelectorAll('.sidebar-group-items').forEach((list) => {
+    list.style.maxHeight = list.scrollHeight + 'px';
+    list.style.opacity = '1';
+  });
+
+  // Search trigger
+  document.getElementById('search-trigger')?.addEventListener('click', () => {
+    document.getElementById('search-modal')?.classList.add('open');
+    document.getElementById('search-input')?.focus();
+  });
+
+  // Mobile sidebar
+  const sidebar = document.getElementById('sidebar');
+  const backdrop = document.getElementById('sidebar-backdrop');
+
+  backdrop?.addEventListener('click', () => {
+    sidebar?.classList.remove('mobile-open');
+    backdrop?.classList.remove('visible');
+  });
+
+  // Expose open function globally
+  window.openSidebar = () => {
+    if (sidebar) sidebar.classList.add('mobile-open');
+    if (backdrop) backdrop.classList.add('visible');
+  };
+</script>
+
+<style>
+  .sidebar {
+    width: var(--sidebar-width);
+    flex-shrink: 0;
+    position: sticky;
+    top: var(--nav-height);
+    height: calc(100vh - var(--nav-height));
+    overflow-y: auto;
+    border-right: 1px solid var(--border-subtle);
+    background: var(--bg-primary);
+    display: flex;
+    flex-direction: column;
+    padding-bottom: var(--space-5);
+    scrollbar-width: thin;
+  }
+
+  .sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+  }
+
+  .sidebar-home {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: color var(--duration-fast);
+  }
+
+  .sidebar-home:hover { color: var(--accent); }
+
+  .sidebar-version {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    background: var(--bg-elevated);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border-subtle);
+  }
+
+  .sidebar-search {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+  }
+
+  .sidebar-search-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 7px 10px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all var(--duration-fast);
+    text-align: left;
+  }
+
+  .sidebar-search-btn:hover {
+    border-color: var(--border-bright);
+    color: var(--text-secondary);
+    background: var(--bg-elevated);
+  }
+
+  .sidebar-search-btn span { flex: 1; }
+
+  .sidebar-search-btn kbd {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: 3px;
+    padding: 1px 4px;
+    color: var(--text-dim);
+  }
+
+  .sidebar-nav {
+    flex: 1;
+    padding: 8px 0;
+    overflow-y: auto;
+  }
+
+  .sidebar-group {
+    padding: 4px 0;
+  }
+
+  .sidebar-group-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 6px 20px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: var(--font-body);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    transition: color var(--duration-fast);
+    text-align: left;
+  }
+
+  .sidebar-group-title:hover { color: var(--text-secondary); }
+
+  .chevron {
+    transition: transform var(--duration-normal) var(--ease-in-out);
+    flex-shrink: 0;
+  }
+
+  .sidebar-group-title[aria-expanded="false"] .chevron {
+    transform: rotate(-90deg);
+  }
+
+  .sidebar-group-items {
+    list-style: none;
+    overflow: hidden;
+    transition: max-height var(--duration-normal) var(--ease-in-out), opacity var(--duration-normal) var(--ease-in-out);
+  }
+
+  .sidebar-link {
+    display: block;
+    padding: 6px 20px 6px 28px;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+    border-radius: 0;
+    transition: all var(--duration-fast) var(--ease-in-out);
+    position: relative;
+  }
+
+  .sidebar-link:hover {
+    color: var(--text-primary);
+    background: var(--bg-elevated);
+    border-left-color: var(--border-bright);
+  }
+
+  .sidebar-link-active {
+    color: var(--accent) !important;
+    background: var(--accent-subtle) !important;
+    border-left-color: var(--accent) !important;
+    font-weight: 500;
+  }
+
+  .sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 9, 13, 0.7);
+    backdrop-filter: blur(4px);
+    z-index: 49;
+    opacity: 0;
+    transition: opacity var(--duration-normal);
+  }
+
+  .sidebar-backdrop.visible { opacity: 1; }
+
+  @media (max-width: 1024px) {
+    .sidebar {
+      position: fixed;
+      left: 0;
+      top: 0;
+      height: 100vh;
+      z-index: 50;
+      transform: translateX(-100%);
+      transition: transform var(--duration-normal) var(--ease-out-expo);
+      border-right: 1px solid var(--border-default);
+      box-shadow: 8px 0 40px rgba(0, 0, 0, 0.5);
+    }
+
+    .sidebar.mobile-open {
+      transform: translateX(0);
+    }
+
+    .sidebar-backdrop { display: block; }
+  }
+</style>

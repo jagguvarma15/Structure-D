@@ -1,0 +1,193 @@
+---
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+
+const base = import.meta.env.BASE_URL;
+
+const toc = [
+  { text: 'Module map', id: 'module-map', depth: 2 },
+  { text: 'Import paths', id: 'import-paths', depth: 2 },
+  { text: 'Exception hierarchy', id: 'exceptions', depth: 2 },
+];
+
+const modules = [
+  { path: 'structure_d.pipeline.orchestrator', label: 'Pipeline', desc: 'Main entry point — run(), run_many(), build_index()', href: `${base}docs/api/core` },
+  { path: 'structure_d.inference.providers', label: 'Providers', desc: 'OpenAI, Anthropic, Gemini, Ollama, vLLM, FallbackProvider', href: `${base}docs/api/models` },
+  { path: 'structure_d.schemas.generic', label: 'Schemas', desc: 'BUILTIN_SCHEMAS, get_schema(), GenericExtraction, KeyValueExtraction…', href: `${base}docs/api/core` },
+  { path: 'structure_d.schemas.base', label: 'Base Models', desc: 'TaskType, DocumentFormat, ExtractionResult, ParsedDocument, TextChunk', href: `${base}docs/api/core` },
+  { path: 'structure_d.ingestion', label: 'Ingestion', desc: 'IngestionManager, BaseParser, ParserRegistry, connectors', href: `${base}docs/api/utilities` },
+  { path: 'structure_d.preprocessing', label: 'Preprocessing', desc: 'Chunker, normalize_text()', href: `${base}docs/api/utilities` },
+  { path: 'structure_d.validation', label: 'Validation', desc: 'SchemaValidator, RetryHandler', href: `${base}docs/api/utilities` },
+  { path: 'structure_d.indexing', label: 'Indexing', desc: 'DocumentReader, VectorStoreIndex, SummaryIndex, QueryEngine', href: `${base}docs/api/utilities` },
+  { path: 'structure_d.retrieval', label: 'Retrieval', desc: 'ChromaVectorStore, PGVectorStore, EmbeddingService', href: `${base}docs/api/utilities` },
+  { path: 'structure_d.models', label: 'Model Registry', desc: 'ModelRegistry, ModelRouter, ModelEntry', href: `${base}docs/api/models` },
+  { path: 'structure_d.storage', label: 'Storage', desc: 'JSONLWriter, CSVWriter, DatabaseWriter, cloud destinations', href: `${base}docs/api/utilities` },
+  { path: 'structure_d.config', label: 'Config', desc: 'Settings, load_settings(), get_settings()', href: `${base}docs/api/core` },
+  { path: 'structure_d.api', label: 'FastAPI', desc: 'create_app(), routes, request/response models', href: `${base}docs/api/core` },
+  { path: 'structure_d.exceptions', label: 'Exceptions', desc: 'StructureDError hierarchy', href: `${base}docs/api/overview#exceptions` },
+];
+---
+
+<DocsLayout
+  title="API Reference"
+  description="Complete API reference for all Structure-D modules, classes, and functions."
+  toc={toc}
+  editPath="/docs/api/overview.astro"
+  next={{ label: 'Core Pipeline', href: `${base}docs/api/core` }}
+>
+  <p>
+    Structure-D's API surface is organized into focused modules. Each module can be imported
+    independently — install only the extras you need.
+  </p>
+
+  <h2 id="module-map">Module map</h2>
+
+  <div class="api-module-grid">
+    {modules.map(mod => (
+      <a href={mod.href} class="api-module-card">
+        <span class="api-module-path">{mod.path}</span>
+        <span class="api-module-label">{mod.label}</span>
+        <span class="api-module-desc">{mod.desc}</span>
+      </a>
+    ))}
+  </div>
+
+  <h2 id="import-paths">Import paths</h2>
+  <p>Quick reference for common imports:</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python"># Pipeline
+from structure_d.pipeline import Pipeline
+
+# Providers
+from structure_d.inference.providers import (
+    OpenAIProvider, AnthropicProvider, GeminiProvider,
+    OllamaProvider, VLLMProvider, FallbackProvider,
+    get_provider, resolve_provider,
+)
+
+# Schemas
+from structure_d.schemas.generic import get_schema, BUILTIN_SCHEMAS
+from structure_d.schemas.base import (
+    TaskType, DocumentFormat, ExtractionResult,
+    ParsedDocument, TextChunk, DocumentMetadata,
+)
+
+# Ingestion
+from structure_d.ingestion.manager import IngestionManager, build_default_registry
+from structure_d.ingestion.base import BaseParser, ParserRegistry
+
+# Preprocessing
+from structure_d.preprocessing.chunker import Chunker
+from structure_d.preprocessing.normalizer import normalize_text
+
+# Validation
+from structure_d.validation.validator import SchemaValidator
+from structure_d.validation.retry import RetryHandler
+
+# Indexing (RAG)
+from structure_d.indexing import (
+    DocumentReader, VectorStoreIndex, SummaryIndex, QueryEngine
+)
+
+# Storage
+from structure_d.storage.jsonl import JSONLWriter, save_as_jsonl
+from structure_d.storage.csv_store import CSVWriter, save_as_csv
+
+# Config
+from structure_d.config import load_settings, get_settings
+
+# Exceptions
+from structure_d.exceptions import (
+    StructureDError, ParserError, ValidationError,
+    InferenceError, ConfigurationError, ModelRoutingError,
+)</code></pre>
+  </div>
+
+  <h2 id="exceptions">Exception hierarchy</h2>
+  <p>All exceptions extend <code>StructureDError</code> which carries a <code>.message</code> and a <code>.context</code> dict:</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">StructureDError(Exception)           # base
+├── ParserError                      # .file_path, .parser_name, .format
+├── ValidationError                  # .schema_name, .validation_errors, .raw_output
+├── InferenceError                   # .model, .status_code, .response_body
+├── ConfigurationError               # .config_key, .config_path
+├── ModelRoutingError                # .task, .available_models
+├── StorageError                     # .storage_type, .file_path
+└── RetrievalError                   # .vector_store, .operation</code></pre>
+  </div>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">from structure_d.exceptions import InferenceError, ParserError
+
+try:
+    results = await pipeline.run(Path("doc.pdf"))
+except ParserError as e:
+    print(f"Parser failed: &#123;e.parser_name&#125; on &#123;e.file_path&#125;")
+except InferenceError as e:
+    print(f"Model error: &#123;e.model&#125; — HTTP &#123;e.status_code&#125;")
+except StructureDError as e:
+    print(f"Pipeline error: &#123;e.message&#125;, context=&#123;e.context&#125;")</code></pre>
+  </div>
+</DocsLayout>
+
+<style>
+  .api-module-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin: var(--space-4) 0;
+  }
+
+  .api-module-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 14px 16px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    text-decoration: none;
+    transition: all var(--duration-fast);
+  }
+
+  .api-module-card:hover {
+    border-color: var(--accent);
+    background: var(--accent-subtle);
+    transform: translateY(-1px);
+  }
+
+  .api-module-path {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  .api-module-label {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .api-module-desc {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+
+  @media (max-width: 640px) {
+    .api-module-grid { grid-template-columns: 1fr; }
+  }
+</style>

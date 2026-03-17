@@ -1,0 +1,290 @@
+---
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+
+const base = import.meta.env.BASE_URL;
+
+const toc = [
+  { text: 'Pipeline', id: 'pipeline', depth: 2 },
+  { text: 'Pipeline.run()', id: 'pipeline-run', depth: 3 },
+  { text: 'Pipeline.run_many()', id: 'pipeline-run-many', depth: 3 },
+  { text: 'Pipeline.build_index()', id: 'pipeline-build-index', depth: 3 },
+  { text: 'ExtractionResult', id: 'extraction-result', depth: 2 },
+  { text: 'ParsedDocument', id: 'parsed-document', depth: 2 },
+  { text: 'TextChunk', id: 'text-chunk', depth: 2 },
+  { text: 'Settings', id: 'settings', depth: 2 },
+];
+---
+
+<DocsLayout
+  title="Core Pipeline API"
+  description="Reference for Pipeline, ExtractionResult, ParsedDocument, TextChunk, and Settings."
+  toc={toc}
+  editPath="/docs/api/core.astro"
+  prev={{ label: 'API Overview', href: `${base}docs/api/overview` }}
+  next={{ label: 'Models & Providers', href: `${base}docs/api/models` }}
+>
+  <h2 id="pipeline">Pipeline</h2>
+  <p>
+    The primary entry point. <code>Pipeline</code> wires together all stages
+    (ingestion → preprocessing → routing → inference → validation → storage).
+  </p>
+
+  <div class="api-block">
+    <div class="api-block-header">
+      <div class="api-method-sig">
+        <span class="fn-name">Pipeline</span>(<span class="fn-param">schema_cls, task, config_path, *, provider, ingestion_manager, model_registry, vector_store, enable_rag</span>)
+      </div>
+      <p class="api-description">Create a new pipeline instance.</p>
+    </div>
+    <div class="api-block-section">
+      <p class="api-section-title">Parameters</p>
+      <div class="param-row">
+        <span class="param-name">schema_cls</span>
+        <span class="param-type">Type[BaseModel] | None</span>
+        <span class="param-desc">Pydantic model class defining the extraction schema. Pass <code>None</code> when using RAG-only mode. <span class="badge badge-required">required</span></span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">task</span>
+        <span class="param-type">TaskType</span>
+        <span class="param-desc">Task type enum. Default: <code>TaskType.EXTRACTION</code>. <span class="badge badge-optional">optional</span></span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">config_path</span>
+        <span class="param-type">str | Path | None</span>
+        <span class="param-desc">Path to YAML config file. Falls back to <code>configs/default.yaml</code>. <span class="badge badge-optional">optional</span></span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">provider</span>
+        <span class="param-type">BaseLLMProvider | None</span>
+        <span class="param-desc">LLM provider instance. If <code>None</code>, resolved from config. <span class="badge badge-optional">optional</span></span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">ingestion_manager</span>
+        <span class="param-type">IngestionManager | None</span>
+        <span class="param-desc">Custom ingestion manager with a registered parser set. <span class="badge badge-optional">optional</span></span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">model_registry</span>
+        <span class="param-type">ModelRegistry | None</span>
+        <span class="param-desc">Custom model registry. Defaults to <code>configs/models.yaml</code>. <span class="badge badge-optional">optional</span></span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">enable_rag</span>
+        <span class="param-type">bool | None</span>
+        <span class="param-desc">Enable RAG indexing mode. Requires <code>vector_store</code>. <span class="badge badge-optional">optional</span></span>
+      </div>
+    </div>
+  </div>
+
+  <h3 id="pipeline-run">Pipeline.run()</h3>
+
+  <div class="api-block">
+    <div class="api-block-header">
+      <div class="api-method-sig">
+        <span class="sk">async</span> <span class="fn-name">pipeline.run</span>(<span class="fn-param">file_path, *, parser_name, model, save_format, output_filename</span>) <span class="fn-type">→ list[ExtractionResult]</span>
+      </div>
+      <p class="api-description">Extract structured data from a single file.</p>
+    </div>
+    <div class="api-block-section">
+      <p class="api-section-title">Parameters</p>
+      <div class="param-row">
+        <span class="param-name">file_path</span>
+        <span class="param-type">Path</span>
+        <span class="param-desc">Path to the input file. Format is auto-detected from extension. <span class="badge badge-required">required</span></span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">parser_name</span>
+        <span class="param-type">str | None</span>
+        <span class="param-desc">Override auto-detected parser (e.g. <code>"ocr_pdf"</code>). <span class="badge badge-optional">optional</span></span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">model</span>
+        <span class="param-type">str | None</span>
+        <span class="param-desc">Override model routing (e.g. <code>"deepseek-r1-70b"</code>). <span class="badge badge-optional">optional</span></span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">save_format</span>
+        <span class="param-type">"jsonl" | "csv" | None</span>
+        <span class="param-desc">Automatically save results after extraction. <span class="badge badge-optional">optional</span></span>
+      </div>
+    </div>
+    <div class="api-block-section">
+      <p class="api-section-title">Returns</p>
+      <div class="returns-type">
+        <span class="returns-arrow">→</span>
+        <span class="returns-type-name">list[ExtractionResult]</span>
+        <span class="returns-desc">One result per document chunk. Check <code>result.is_valid</code> before using <code>result.structured_output</code>.</span>
+      </div>
+    </div>
+    <div class="api-block-section">
+      <p class="api-section-title">Example</p>
+      <div class="code-block-wrapper" style="border:none; border-radius:0; margin:0;">
+        <pre><code class="language-python">results = await pipeline.run(
+    Path("report.pdf"),
+    save_format="jsonl",
+)
+for r in results:
+    if r.is_valid:
+        print(r.structured_output)</code></pre>
+      </div>
+    </div>
+  </div>
+
+  <h3 id="pipeline-run-many">Pipeline.run_many()</h3>
+
+  <div class="api-block">
+    <div class="api-block-header">
+      <div class="api-method-sig">
+        <span class="sk">async</span> <span class="fn-name">pipeline.run_many</span>(<span class="fn-param">file_paths, *, max_concurrent, **kwargs</span>) <span class="fn-type">→ dict[str, list[ExtractionResult]]</span>
+      </div>
+      <p class="api-description">Concurrently extract from multiple files.</p>
+    </div>
+    <div class="api-block-section">
+      <p class="api-section-title">Parameters</p>
+      <div class="param-row">
+        <span class="param-name">file_paths</span>
+        <span class="param-type">list[Path]</span>
+        <span class="param-desc">List of file paths to process. <span class="badge badge-required">required</span></span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">max_concurrent</span>
+        <span class="param-type">int | None</span>
+        <span class="param-desc">Maximum concurrent pipeline runs. Defaults to config value (4). <span class="badge badge-optional">optional</span></span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">**kwargs</span>
+        <span class="param-type">Any</span>
+        <span class="param-desc">All keyword args are forwarded to <code>run()</code> for each file. <span class="badge badge-optional">optional</span></span>
+      </div>
+    </div>
+    <div class="api-block-section">
+      <p class="api-section-title">Returns</p>
+      <div class="returns-type">
+        <span class="returns-arrow">→</span>
+        <span class="returns-type-name">dict[str, list[ExtractionResult]]</span>
+        <span class="returns-desc">Mapping from filename string to results list.</span>
+      </div>
+    </div>
+  </div>
+
+  <h3 id="pipeline-build-index">Pipeline.build_index()</h3>
+
+  <div class="api-block">
+    <div class="api-block-header">
+      <div class="api-method-sig">
+        <span class="sk">async</span> <span class="fn-name">pipeline.build_index</span>(<span class="fn-param">file_path, index_type, *, vector_store, parser_name</span>) <span class="fn-type">→ VectorStoreIndex | SummaryIndex</span>
+      </div>
+      <p class="api-description">Parse a document, chunk it, and insert into a vector or summary index.</p>
+    </div>
+    <div class="api-block-section">
+      <p class="api-section-title">Parameters</p>
+      <div class="param-row">
+        <span class="param-name">file_path</span>
+        <span class="param-type">Path</span>
+        <span class="param-desc">Document to index. <span class="badge badge-required">required</span></span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">index_type</span>
+        <span class="param-type">"vector" | "summary"</span>
+        <span class="param-desc">Index backend. Default: <code>"vector"</code>. <span class="badge badge-optional">optional</span></span>
+      </div>
+    </div>
+  </div>
+
+  <h2 id="extraction-result">ExtractionResult</h2>
+  <p>Returned by all pipeline methods. All fields are read-only.</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">class ExtractionResult(BaseModel):
+    result_id: str               # unique UUID
+    document_id: str             # source document UUID
+    chunk_id: str | None         # chunk UUID if chunked
+    source_format: DocumentFormat
+    task: TaskType
+    model_used: str              # "gpt-4o", "llama-3.1-8b", etc.
+    raw_output: str              # raw LLM text response
+    structured_output: dict | list   # your schema's data
+    is_valid: bool               # True if schema validation passed
+    validation_errors: list[str] # empty if is_valid=True
+    latency_ms: float            # end-to-end latency
+    token_usage: dict[str, int]  # prompt_tokens, completion_tokens, total_tokens
+    created_at: datetime</code></pre>
+  </div>
+
+  <h2 id="parsed-document">ParsedDocument</h2>
+  <p>Output of the ingestion stage, input to preprocessing.</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">class ParsedDocument(BaseModel):
+    metadata: DocumentMetadata
+    text: str              # full concatenated text
+    pages: list[str]       # per-page text (empty for non-paginated formats)
+    tables: list[dict]     # extracted tables
+    images: list[str]      # base64-encoded images or paths
+
+class DocumentMetadata(BaseModel):
+    document_id: str       # uuid hex, auto-generated
+    filename: str
+    source: str            # "local", "s3://...", URL
+    file_extension: str
+    format: DocumentFormat
+    file_size_bytes: int
+    page_count: int | None
+    ingested_at: datetime
+    extra: dict[str, Any]</code></pre>
+  </div>
+
+  <h2 id="text-chunk">TextChunk</h2>
+  <p>Output of the preprocessing/chunking stage.</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">class TextChunk(BaseModel):
+    text: str
+    metadata: ChunkMetadata
+
+class ChunkMetadata(BaseModel):
+    chunk_id: str
+    document_id: str
+    source_format: DocumentFormat
+    page_number: int | None
+    heading: str | None     # section heading this chunk falls under
+    token_count: int</code></pre>
+  </div>
+
+  <h2 id="settings">Settings</h2>
+  <p>
+    The settings object is a Pydantic <code>BaseSettings</code> model loaded from YAML + environment variables.
+    Use <code>get_settings()</code> for the cached singleton or <code>load_settings()</code> for a fresh load.
+  </p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">from structure_d.config import get_settings
+
+settings = get_settings()
+print(settings.inference.provider.provider)   # "vllm"
+print(settings.preprocessing.chunking.max_tokens)  # 1024</code></pre>
+  </div>
+</DocsLayout>
+
+<style>
+  .sk { color: var(--syntax-keyword); font-style: italic; }
+  .fn-name { color: var(--syntax-function); }
+  .fn-param { color: var(--text-secondary); }
+  .fn-type { color: var(--syntax-type); }
+</style>

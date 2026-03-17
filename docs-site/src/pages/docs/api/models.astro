@@ -1,0 +1,325 @@
+---
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+
+const base = import.meta.env.BASE_URL;
+
+const toc = [
+  { text: 'BaseLLMProvider', id: 'base-provider', depth: 2 },
+  { text: 'OpenAIProvider', id: 'openai', depth: 2 },
+  { text: 'AnthropicProvider', id: 'anthropic', depth: 2 },
+  { text: 'GeminiProvider', id: 'gemini', depth: 2 },
+  { text: 'OllamaProvider', id: 'ollama', depth: 2 },
+  { text: 'VLLMProvider', id: 'vllm', depth: 2 },
+  { text: 'FallbackProvider', id: 'fallback', depth: 2 },
+  { text: 'Provider factory', id: 'factory', depth: 2 },
+  { text: 'ModelRegistry', id: 'model-registry', depth: 2 },
+  { text: 'ModelRouter', id: 'model-router', depth: 2 },
+  { text: 'Registered models', id: 'registered-models', depth: 2 },
+];
+
+const models = [
+  { alias: 'qwen-1.5b', model: 'Qwen/Qwen2.5-1.5B-Instruct', size: '1.5B', tasks: ['classification', 'sentiment'], cost: '$0.001' },
+  { alias: 'mistral-7b', model: 'mistralai/Mistral-7B-Instruct-v0.3', size: '7B', tasks: ['classification', 'extraction'], cost: '$0.005' },
+  { alias: 'llama-3.1-8b', model: 'meta-llama/Llama-3.1-8B-Instruct', size: '8B', tasks: ['extraction', 'classification', 'summarisation'], cost: '$0.008' },
+  { alias: 'llama-3.1-13b', model: 'meta-llama/Llama-3.1-13B-Instruct', size: '13B', tasks: ['extraction', 'summarisation'], cost: '$0.015' },
+  { alias: 'deepseek-r1-70b', model: 'deepseek-ai/DeepSeek-R1-Distill-Llama-70B', size: '70B AWQ', tasks: ['extraction', 'reasoning'], cost: '$0.06' },
+  { alias: 'llama-3.1-70b', model: 'meta-llama/Llama-3.1-70B-Instruct', size: '70B GPTQ', tasks: ['extraction', 'reasoning'], cost: '$0.06' },
+  { alias: 'qwen-vl-7b', model: 'Qwen/Qwen2-VL-7B-Instruct', size: '7B multimodal', tasks: ['multimodal'], cost: '$0.01' },
+];
+---
+
+<DocsLayout
+  title="Models & Providers"
+  description="LLM providers (OpenAI, Anthropic, Gemini, Ollama, vLLM), ModelRegistry, and ModelRouter API reference."
+  toc={toc}
+  editPath="/docs/api/models.astro"
+  prev={{ label: 'Core Pipeline', href: `${base}docs/api/core` }}
+  next={{ label: 'Utilities', href: `${base}docs/api/utilities` }}
+>
+  <h2 id="base-provider">BaseLLMProvider</h2>
+  <p>Abstract base class for all providers. Implement <code>generate()</code> and <code>generate_text()</code> to create a custom provider.</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">class BaseLLMProvider(ABC):
+    async def generate(
+        self,
+        prompt: str,
+        schema: Type[BaseModel],
+        system_prompt: str | None = None,
+        temperature: float = 0.0,
+        max_tokens: int = 2048,
+        model: str | None = None,
+        **kwargs,
+    ) -> ProviderResult: ...
+
+    async def generate_text(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        temperature: float = 0.0,
+        max_tokens: int = 2048,
+        model: str | None = None,
+        **kwargs,
+    ) -> str: ...
+
+@dataclass
+class ProviderResult:
+    output: BaseModel           # validated Pydantic instance
+    raw_text: str               # raw model output
+    model_used: str
+    token_usage: dict[str, int] # prompt_tokens, completion_tokens, total_tokens</code></pre>
+  </div>
+
+  <h2 id="openai">OpenAIProvider</h2>
+  <div class="api-block">
+    <div class="api-block-header">
+      <div class="api-method-sig">
+        <span class="fn-name">OpenAIProvider</span>(<span class="fn-param">api_key, model, base_url</span>)
+      </div>
+      <p class="api-description">Uses OpenAI's structured outputs (<code>response_format</code>) for guaranteed JSON.</p>
+    </div>
+    <div class="api-block-section">
+      <p class="api-section-title">Parameters</p>
+      <div class="param-row">
+        <span class="param-name">api_key</span>
+        <span class="param-type">str | None</span>
+        <span class="param-desc">Reads <code>OPENAI_API_KEY</code> env var if <code>None</code>. <span class="badge badge-optional">optional</span></span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">model</span>
+        <span class="param-type">str</span>
+        <span class="param-desc">Default: <code>"gpt-4o"</code>. <span class="badge badge-optional">optional</span></span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">base_url</span>
+        <span class="param-type">str | None</span>
+        <span class="param-desc">Override for Azure OpenAI or proxy endpoints. <span class="badge badge-optional">optional</span></span>
+      </div>
+    </div>
+  </div>
+
+  <h2 id="anthropic">AnthropicProvider</h2>
+  <div class="api-block">
+    <div class="api-block-header">
+      <div class="api-method-sig">
+        <span class="fn-name">AnthropicProvider</span>(<span class="fn-param">api_key, model</span>)
+      </div>
+      <p class="api-description">Uses Anthropic's <strong>tool use</strong> (not prompt engineering) for structured output — more reliable than JSON-mode prompting.</p>
+    </div>
+    <div class="api-block-section">
+      <p class="api-section-title">Parameters</p>
+      <div class="param-row">
+        <span class="param-name">api_key</span>
+        <span class="param-type">str | None</span>
+        <span class="param-desc">Reads <code>ANTHROPIC_API_KEY</code> if <code>None</code>. <span class="badge badge-optional">optional</span></span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">model</span>
+        <span class="param-type">str</span>
+        <span class="param-desc">Default: <code>"claude-3-5-sonnet-20241022"</code>. <span class="badge badge-optional">optional</span></span>
+      </div>
+    </div>
+  </div>
+
+  <h2 id="gemini">GeminiProvider</h2>
+  <div class="api-block">
+    <div class="api-block-header">
+      <div class="api-method-sig">
+        <span class="fn-name">GeminiProvider</span>(<span class="fn-param">api_key, model</span>)
+      </div>
+      <p class="api-description">Uses Google's Gemini API via <code>google-generativeai</code>.</p>
+    </div>
+    <div class="api-block-section">
+      <p class="api-section-title">Parameters</p>
+      <div class="param-row">
+        <span class="param-name">api_key</span>
+        <span class="param-type">str | None</span>
+        <span class="param-desc">Reads <code>GOOGLE_API_KEY</code> if <code>None</code>. <span class="badge badge-optional">optional</span></span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">model</span>
+        <span class="param-type">str</span>
+        <span class="param-desc">Default: <code>"gemini-1.5-pro"</code>. <span class="badge badge-optional">optional</span></span>
+      </div>
+    </div>
+  </div>
+
+  <h2 id="ollama">OllamaProvider</h2>
+  <div class="api-block">
+    <div class="api-block-header">
+      <div class="api-method-sig">
+        <span class="fn-name">OllamaProvider</span>(<span class="fn-param">base_url, model</span>)
+      </div>
+      <p class="api-description">Connects to a local Ollama server. No API key required — fully air-gapped.</p>
+    </div>
+    <div class="api-block-section">
+      <p class="api-section-title">Parameters</p>
+      <div class="param-row">
+        <span class="param-name">base_url</span>
+        <span class="param-type">str</span>
+        <span class="param-desc">Default: <code>"http://localhost:11434"</code>. <span class="badge badge-optional">optional</span></span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">model</span>
+        <span class="param-type">str</span>
+        <span class="param-desc">Default: <code>"llama3.1:8b"</code>. Must be pulled in Ollama first. <span class="badge badge-optional">optional</span></span>
+      </div>
+    </div>
+  </div>
+
+  <h2 id="vllm">VLLMProvider</h2>
+  <div class="api-block">
+    <div class="api-block-header">
+      <div class="api-method-sig">
+        <span class="fn-name">VLLMProvider</span>(<span class="fn-param">api_base, api_key, model</span>)
+      </div>
+      <p class="api-description">Connects to a vLLM server using <code>guided_json</code> constrained decoding — the most reliable structured output method for open models.</p>
+    </div>
+    <div class="api-block-section">
+      <p class="api-section-title">Parameters</p>
+      <div class="param-row">
+        <span class="param-name">api_base</span>
+        <span class="param-type">str | None</span>
+        <span class="param-desc">vLLM server URL. Reads <code>VLLM_API_BASE</code> if <code>None</code>. <span class="badge badge-optional">optional</span></span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">model</span>
+        <span class="param-type">str | None</span>
+        <span class="param-desc">Model name as registered in vLLM. Uses model routing if <code>None</code>. <span class="badge badge-optional">optional</span></span>
+      </div>
+    </div>
+  </div>
+
+  <h2 id="fallback">FallbackProvider</h2>
+  <div class="api-block">
+    <div class="api-block-header">
+      <div class="api-method-sig">
+        <span class="fn-name">FallbackProvider</span>(<span class="fn-param">primary, fallback</span>)
+      </div>
+      <p class="api-description">Wraps two providers. Transparently retries on <code>InferenceError</code>. Both providers must implement <code>BaseLLMProvider</code>.</p>
+    </div>
+  </div>
+
+  <h2 id="factory">Provider factory</h2>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">from structure_d.inference.providers import get_provider, resolve_provider
+
+# By name — returns a configured instance
+provider = get_provider("openai", api_key="sk-...", model="gpt-4o-mini")
+provider = get_provider("anthropic")
+provider = get_provider("ollama", model="mistral:7b")
+
+# From config — reads settings and builds FallbackProvider if configured
+from structure_d.config import get_settings
+provider = resolve_provider(get_settings())</code></pre>
+  </div>
+
+  <h2 id="model-registry">ModelRegistry</h2>
+  <p>Manages the catalogue of available models loaded from <code>configs/models.yaml</code>.</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">from structure_d.models.registry import ModelRegistry, ModelEntry
+from structure_d.schemas.base import TaskType
+
+registry = ModelRegistry.from_yaml("configs/models.yaml")
+
+# Query
+registry.list_models()                          # list[ModelEntry]
+registry.get("llama-3.1-8b")                    # ModelEntry | None
+registry.get_by_task(TaskType.EXTRACTION)        # list[ModelEntry]
+registry.get_default_for_task(TaskType.REASONING) # ModelEntry | None
+registry.get_multimodal()                        # list[ModelEntry]
+
+# Register a custom model
+registry.register(ModelEntry(
+    name="mistralai/Mixtral-8x7B-Instruct-v0.1",
+    alias="mixtral-8x7b",
+    tasks=[TaskType.EXTRACTION, TaskType.SUMMARISATION],
+    size_b=46.7,
+    quantisation=None,
+    max_context=32768,
+    cost_per_1k_tokens=0.03,
+    supports_structured_output=True,
+    multimodal=False,
+))</code></pre>
+  </div>
+
+  <h2 id="model-router">ModelRouter</h2>
+
+  <div class="api-block">
+    <div class="api-block-header">
+      <div class="api-method-sig">
+        <span class="fn-name">router.route</span>(<span class="fn-param">task, *, input_tokens, prefer_multimodal, max_cost_per_1k, max_size_b</span>) <span class="fn-type">→ ModelEntry</span>
+      </div>
+      <p class="api-description">Select the best model for a task based on registered criteria.</p>
+    </div>
+    <div class="api-block-section">
+      <p class="api-section-title">Parameters</p>
+      <div class="param-row">
+        <span class="param-name">task</span>
+        <span class="param-type">TaskType</span>
+        <span class="param-desc">The inference task. <span class="badge badge-required">required</span></span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">max_cost_per_1k</span>
+        <span class="param-type">float | None</span>
+        <span class="param-desc">Filter models above this cost threshold. <span class="badge badge-optional">optional</span></span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">max_size_b</span>
+        <span class="param-type">float | None</span>
+        <span class="param-desc">Filter models larger than N billion parameters. <span class="badge badge-optional">optional</span></span>
+      </div>
+    </div>
+  </div>
+
+  <h2 id="registered-models">Registered models</h2>
+  <p>Default models in <code>configs/models.yaml</code>:</p>
+
+  <div class="prose-table-wrapper">
+    <table class="prose-table">
+      <thead>
+        <tr><th>Alias</th><th>Model</th><th>Size</th><th>Default for</th><th>Cost/1k</th></tr>
+      </thead>
+      <tbody>
+        {models.map(m => (
+          <tr>
+            <td><code>{m.alias}</code></td>
+            <td style="font-size: 0.8em">{m.model}</td>
+            <td>{m.size}</td>
+            <td>{m.tasks.join(', ')}</td>
+            <td><code>{m.cost}</code></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div class="callout-body">
+      <p class="callout-title">Add your own models</p>
+      <p class="callout-content">Add entries to <code>configs/models.yaml</code> to register custom or fine-tuned models. The router will include them in its selection pool.</p>
+    </div>
+  </div>
+</DocsLayout>
+
+<style>
+  .sk { color: var(--syntax-keyword); }
+  .fn-name { color: var(--syntax-function); }
+  .fn-param { color: var(--text-secondary); }
+  .fn-type { color: var(--syntax-type); }
+</style>

@@ -1,0 +1,315 @@
+---
+import BaseLayout from './BaseLayout.astro';
+import Navbar from '../components/Navbar.astro';
+import Sidebar from '../components/Sidebar.astro';
+import TableOfContents from '../components/TableOfContents.astro';
+import Footer from '../components/Footer.astro';
+import SearchModal from '../components/SearchModal.astro';
+import '../styles/global.css';
+
+export interface TOCItem {
+  text: string;
+  id: string;
+  depth: number;
+}
+
+export interface Props {
+  title: string;
+  description?: string;
+  toc?: TOCItem[];
+  editPath?: string;
+  prev?: { label: string; href: string };
+  next?: { label: string; href: string };
+}
+
+const {
+  title,
+  description,
+  toc = [],
+  editPath,
+  prev,
+  next,
+} = Astro.props;
+
+const currentPath = Astro.url.pathname;
+const base = import.meta.env.BASE_URL;
+const githubBase = 'https://github.com/JagadeshVarma/Structure-D/edit/main/docs-site/src/pages';
+const editUrl = editPath ? `${githubBase}${editPath}` : null;
+---
+
+<BaseLayout title={title} description={description}>
+  <Navbar activePath={currentPath} />
+
+  <div class="docs-layout">
+    <Sidebar currentPath={currentPath} />
+
+    <main class="docs-main" id="main-content">
+      <!-- Mobile menu trigger -->
+      <button class="docs-mobile-menu" onclick="window.openSidebar()" aria-label="Open navigation">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M0 3a1 1 0 0 1 1-1h14a1 1 0 0 1 0 2H1a1 1 0 0 1-1-1zm0 5a1 1 0 0 1 1-1h14a1 1 0 0 1 0 2H1a1 1 0 0 1-1-1zm0 5a1 1 0 0 1 1-1h14a1 1 0 0 1 0 2H1a1 1 0 0 1-1-1z"/>
+        </svg>
+        Menu
+      </button>
+
+      <article class="docs-content prose">
+        <header class="docs-header">
+          <h1 class="docs-title">{title}</h1>
+          {description && <p class="docs-lead">{description}</p>}
+        </header>
+
+        <slot />
+
+        <div class="docs-footer-nav">
+          {prev && (
+            <a href={prev.href} class="docs-nav-link docs-nav-prev" rel="prev">
+              <span class="nav-dir">← Previous</span>
+              <span class="nav-label">{prev.label}</span>
+            </a>
+          )}
+          <div class="docs-nav-spacer"></div>
+          {next && (
+            <a href={next.href} class="docs-nav-link docs-nav-next" rel="next">
+              <span class="nav-dir">Next →</span>
+              <span class="nav-label">{next.label}</span>
+            </a>
+          )}
+        </div>
+
+        {editUrl && (
+          <div class="docs-edit">
+            <a href={editUrl} target="_blank" rel="noopener" class="docs-edit-link">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M12.854.146a.5.5 0 0 0-.707 0L10.5 1.793 14.207 5.5l1.647-1.646a.5.5 0 0 0 0-.708l-3-3zm.646 6.061L9.793 2.5 3.293 9H3.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-7.468 7.468A.5.5 0 0 1 6 13.5V13h-.5a.5.5 0 0 1-.5-.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.5-.5V10h-.5a.499.499 0 0 1-.175-.032l-.179.178a.5.5 0 0 0-.11.168l-2 5a.5.5 0 0 0 .65.65l5-2a.5.5 0 0 0 .168-.11l.178-.178z"/>
+              </svg>
+              Edit this page on GitHub
+            </a>
+          </div>
+        )}
+      </article>
+    </main>
+
+    <TableOfContents items={toc} />
+  </div>
+
+  <Footer />
+  <SearchModal />
+</BaseLayout>
+
+<style>
+  .docs-layout {
+    display: flex;
+    min-height: calc(100vh - var(--nav-height));
+    padding-top: var(--nav-height);
+  }
+
+  .docs-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    justify-content: center;
+    padding: var(--space-7) var(--space-6);
+  }
+
+  .docs-content {
+    width: 100%;
+    max-width: var(--content-max);
+  }
+
+  .docs-mobile-menu {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    background: none;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+    margin-bottom: var(--space-4);
+    transition: all var(--duration-fast);
+  }
+
+  .docs-mobile-menu:hover {
+    color: var(--text-primary);
+    border-color: var(--border-bright);
+    background: var(--bg-elevated);
+  }
+
+  .docs-header {
+    margin-bottom: var(--space-5);
+    padding-bottom: var(--space-4);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .docs-title {
+    font-size: var(--text-2xl);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+  }
+
+  .docs-lead {
+    font-size: var(--text-lg);
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin-top: 8px;
+  }
+
+  /* Prose styles */
+  .prose :global(h2) {
+    font-size: var(--text-xl);
+    margin-top: var(--space-6);
+    margin-bottom: var(--space-3);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--border-subtle);
+    color: var(--text-primary);
+    scroll-margin-top: calc(var(--nav-height) + 24px);
+  }
+
+  .prose :global(h3) {
+    font-size: var(--text-lg);
+    margin-top: var(--space-5);
+    margin-bottom: var(--space-3);
+    color: var(--text-primary);
+    scroll-margin-top: calc(var(--nav-height) + 24px);
+  }
+
+  .prose :global(h4) {
+    font-size: var(--text-base);
+    font-weight: 600;
+    margin-top: var(--space-4);
+    margin-bottom: var(--space-2);
+    color: var(--text-primary);
+    scroll-margin-top: calc(var(--nav-height) + 24px);
+  }
+
+  .prose :global(p) {
+    margin-bottom: var(--space-3);
+    color: var(--text-secondary);
+    line-height: 1.75;
+  }
+
+  .prose :global(ul),
+  .prose :global(ol) {
+    padding-left: var(--space-4);
+    margin-bottom: var(--space-3);
+    color: var(--text-secondary);
+  }
+
+  .prose :global(li) {
+    margin-bottom: 6px;
+    line-height: 1.7;
+  }
+
+  .prose :global(li::marker) {
+    color: var(--accent);
+  }
+
+  .prose :global(blockquote) {
+    border-left: 3px solid var(--border-bright);
+    padding: 12px 16px;
+    margin: var(--space-4) 0;
+    background: var(--bg-secondary);
+    border-radius: 0 6px 6px 0;
+    color: var(--text-secondary);
+    font-style: italic;
+  }
+
+  .prose :global(pre) {
+    margin: var(--space-4) 0;
+    border-radius: 10px;
+    border: 1px solid var(--border-default);
+    overflow-x: auto;
+  }
+
+  .prose :global(img) {
+    border-radius: 8px;
+    border: 1px solid var(--border-default);
+    max-width: 100%;
+  }
+
+  /* Anchor links on headings */
+  .prose :global(h2),
+  .prose :global(h3),
+  .prose :global(h4) {
+    position: relative;
+  }
+
+  .docs-footer-nav {
+    display: flex;
+    align-items: stretch;
+    gap: var(--space-3);
+    margin-top: var(--space-7);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .docs-nav-spacer { flex: 1; }
+
+  .docs-nav-link {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 14px 18px;
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    text-decoration: none;
+    min-width: 180px;
+    max-width: 240px;
+    transition: all var(--duration-fast);
+    background: var(--bg-secondary);
+  }
+
+  .docs-nav-link:hover {
+    border-color: var(--border-bright);
+    background: var(--bg-elevated);
+    transform: translateY(-1px);
+  }
+
+  .docs-nav-prev { text-align: left; }
+  .docs-nav-next { text-align: right; margin-left: auto; }
+
+  .nav-dir {
+    font-size: var(--text-xs);
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+  }
+
+  .nav-label {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+
+  .docs-edit {
+    margin-top: var(--space-4);
+    text-align: right;
+  }
+
+  .docs-edit-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--text-xs);
+    color: var(--text-dim);
+    text-decoration: none;
+    transition: color var(--duration-fast);
+  }
+
+  .docs-edit-link:hover { color: var(--accent); }
+
+  @media (max-width: 1024px) {
+    .docs-mobile-menu { display: flex; }
+  }
+
+  @media (max-width: 640px) {
+    .docs-main { padding: var(--space-4) var(--space-3); }
+    .docs-footer-nav { flex-direction: column; }
+    .docs-nav-next { margin-left: 0; max-width: none; }
+    .docs-nav-prev { max-width: none; }
+  }
+</style>

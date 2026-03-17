@@ -1,0 +1,256 @@
+---
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+
+const base = import.meta.env.BASE_URL;
+
+const toc = [
+  { text: 'RAG pipeline', id: 'rag-pipeline', depth: 2 },
+  { text: 'LlamaIndex-style indexing', id: 'llamaindex-style', depth: 2 },
+  { text: 'Fallback providers', id: 'fallback-providers', depth: 2 },
+  { text: 'Custom parsers', id: 'custom-parsers', depth: 2 },
+  { text: 'Cloud connectors', id: 'cloud-connectors', depth: 2 },
+  { text: 'Batch processing', id: 'batch-processing', depth: 2 },
+];
+---
+
+<DocsLayout
+  title="Advanced Usage"
+  description="RAG indexing, LlamaIndex-style querying, custom parsers, cloud connectors, and batch processing at scale."
+  toc={toc}
+  editPath="/docs/guides/advanced.astro"
+  prev={{ label: 'Basic Usage', href: `${base}docs/guides/basic-usage` }}
+  next={{ label: 'Deployment', href: `${base}docs/guides/deployment` }}
+>
+  <h2 id="rag-pipeline">RAG pipeline</h2>
+  <p>
+    Build a retrieval-augmented generation pipeline in a few lines.
+    Structure-D handles document ingestion, chunking, embedding, and storage.
+  </p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">from pathlib import Path
+from structure_d.pipeline import Pipeline
+from structure_d.retrieval.vector_store import ChromaVectorStore
+from structure_d.inference.providers import OpenAIProvider
+
+async def main():
+    vector_store = ChromaVectorStore(
+        collection_name="contracts",
+        persist_directory="./chroma_db",
+    )
+
+    pipeline = Pipeline(
+        schema_cls=None,         # not needed for RAG
+        enable_rag=True,
+        vector_store=vector_store,
+        provider=OpenAIProvider(),
+    )
+
+    # Build an index from a document
+    index = await pipeline.build_index(
+        Path("contracts/master_agreement.pdf"),
+        index_type="vector",     # or "summary"
+    )
+
+    # Query the index
+    engine = index.as_query_engine(provider=pipeline.provider)
+    answer = await engine.query("What are the termination clauses?")
+    print(answer)
+
+asyncio.run(main())</code></pre>
+  </div>
+
+  <h2 id="llamaindex-style">LlamaIndex-style indexing</h2>
+  <p>
+    Use the <code>DocumentReader</code> and <code>VectorStoreIndex</code> directly for
+    a LlamaIndex-compatible indexing workflow:
+  </p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">from structure_d.indexing import DocumentReader, VectorStoreIndex
+from structure_d.retrieval.vector_store import ChromaVectorStore
+from structure_d.retrieval.embeddings import EmbeddingService
+from structure_d.inference.providers import OpenAIProvider
+
+reader = DocumentReader()
+
+# Load and chunk from a directory
+nodes = await reader.load_directory_and_chunk(
+    Path("knowledge_base/"),
+    glob="**/*.pdf",
+)
+
+# Build the index
+index = VectorStoreIndex(
+    vector_store=ChromaVectorStore(),
+    embedding_service=EmbeddingService(),
+)
+await index.insert_nodes(nodes)
+
+# Query
+engine = index.as_query_engine(
+    provider=OpenAIProvider(),
+    top_k=5,
+    response_mode="simple",  # or "tree_summarize"
+)
+answer = await engine.query("Summarize the key findings")
+print(answer)</code></pre>
+  </div>
+
+  <h2 id="fallback-providers">Fallback providers</h2>
+  <p>
+    Chain two providers — the primary runs first, and the fallback takes over automatically
+    when the primary raises an <code>InferenceError</code>:
+  </p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">from structure_d.inference.providers import VLLMProvider, AnthropicProvider, FallbackProvider
+
+provider = FallbackProvider(
+    primary=VLLMProvider(api_base="http://vllm-server:8000"),
+    fallback=AnthropicProvider(),
+)
+
+pipeline = Pipeline(schema_cls=MySchema, provider=provider)</code></pre>
+  </div>
+
+  <p>Or configure via YAML (no code changes required):</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">yaml</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-yaml">inference:
+  provider:
+    provider: "vllm"
+    fallback_provider: "anthropic"</code></pre>
+  </div>
+
+  <h2 id="custom-parsers">Custom parsers</h2>
+  <p>Register your own parser by extending <code>BaseParser</code>:</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">from pathlib import Path
+from structure_d.ingestion.base import BaseParser
+from structure_d.schemas.base import ParsedDocument, DocumentMetadata, DocumentFormat
+
+class MyXMLParser(BaseParser):
+    supported_extensions = [".xml", ".xsd"]
+
+    async def parse(self, file_path: Path, **kwargs) -> ParsedDocument:
+        import xml.etree.ElementTree as ET
+        tree = ET.parse(file_path)
+        text = "\n".join(el.text or "" for el in tree.iter() if el.text)
+
+        return ParsedDocument(
+            metadata=DocumentMetadata(
+                filename=file_path.name,
+                source="local",
+                file_extension=".xml",
+                format=DocumentFormat.PLAIN_TEXT,
+                file_size_bytes=file_path.stat().st_size,
+                page_count=None,
+                ingested_at=__import__("datetime").datetime.now(),
+                extra={},
+            ),
+            text=text,
+            pages=[text],
+            tables=[],
+            images=[],
+        )
+
+# Register with the pipeline
+from structure_d.ingestion.manager import build_default_registry
+
+registry = build_default_registry()
+registry.register("my_xml", MyXMLParser())
+
+pipeline = Pipeline(
+    schema_cls=MySchema,
+    ingestion_manager=IngestionManager(registry=registry),
+    provider=OpenAIProvider(),
+)</code></pre>
+  </div>
+
+  <h2 id="cloud-connectors">Cloud connectors</h2>
+  <p>Ingest documents directly from cloud storage:</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">from structure_d.ingestion.connectors import S3Connector
+from structure_d.ingestion.manager import IngestionManager
+
+connector = S3Connector(
+    bucket="my-documents",
+    prefix="invoices/2025/",
+    region="us-east-1",
+    # credentials from env: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+)
+
+manager = IngestionManager(connector=connector)
+documents = await manager.ingest_from_connector()</code></pre>
+  </div>
+
+  <div class="prose-table-wrapper">
+    <table class="prose-table">
+      <thead>
+        <tr><th>Connector</th><th>Import name</th><th>Auth</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Local filesystem</td><td><code>LocalConnector</code></td><td>—</td></tr>
+        <tr><td>AWS S3</td><td><code>S3Connector</code></td><td><code>AWS_ACCESS_KEY_ID</code></td></tr>
+        <tr><td>Google Cloud Storage</td><td><code>GCSConnector</code></td><td><code>GOOGLE_APPLICATION_CREDENTIALS</code></td></tr>
+        <tr><td>Azure Blob Storage</td><td><code>AzureConnector</code></td><td><code>AZURE_STORAGE_CONNECTION_STRING</code></td></tr>
+        <tr><td>SFTP</td><td><code>SFTPConnector</code></td><td>host + key/password</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="batch-processing">Batch processing</h2>
+  <p>For very large document sets, use <code>BatchProcessor</code> directly to control concurrency and error handling:</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">from structure_d.inference.batch import BatchProcessor
+
+processor = BatchProcessor(
+    provider=OpenAIProvider(),
+    max_concurrent=16,
+    retry_failed=True,
+)
+
+chunks = [...]   # list[TextChunk] from preprocessing
+
+results = await processor.process_batch(
+    chunks,
+    schema_cls=MySchema,
+    task=TaskType.EXTRACTION,
+)
+
+successful = [r for r in results if r.is_valid]
+print(f"Success rate: &#123;len(successful)&#125;/&#123;len(results)&#125;")</code></pre>
+  </div>
+</DocsLayout>

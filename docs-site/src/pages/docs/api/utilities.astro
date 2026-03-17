@@ -1,0 +1,284 @@
+---
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+
+const base = import.meta.env.BASE_URL;
+
+const toc = [
+  { text: 'IngestionManager', id: 'ingestion-manager', depth: 2 },
+  { text: 'Chunker', id: 'chunker', depth: 2 },
+  { text: 'normalize_text()', id: 'normalize-text', depth: 2 },
+  { text: 'SchemaValidator', id: 'schema-validator', depth: 2 },
+  { text: 'RetryHandler', id: 'retry-handler', depth: 2 },
+  { text: 'Storage writers', id: 'storage-writers', depth: 2 },
+  { text: 'DocumentReader', id: 'document-reader', depth: 2 },
+  { text: 'QueryEngine', id: 'query-engine', depth: 2 },
+];
+---
+
+<DocsLayout
+  title="Utilities"
+  description="Reference for IngestionManager, Chunker, SchemaValidator, RetryHandler, storage writers, and the RAG indexing layer."
+  toc={toc}
+  editPath="/docs/api/utilities.astro"
+  prev={{ label: 'Models & Providers', href: `${base}docs/api/models` }}
+>
+  <h2 id="ingestion-manager">IngestionManager</h2>
+  <p>Manages parser selection and coordinates multi-file ingestion with optional concurrency.</p>
+
+  <div class="api-block">
+    <div class="api-block-header">
+      <div class="api-method-sig">
+        <span class="fn-name">IngestionManager</span>(<span class="fn-param">registry, connector</span>)
+      </div>
+    </div>
+    <div class="api-block-section">
+      <p class="api-section-title">Parameters</p>
+      <div class="param-row">
+        <span class="param-name">registry</span>
+        <span class="param-type">ParserRegistry | None</span>
+        <span class="param-desc">Parser registry. Defaults to <code>build_default_registry()</code>. <span class="badge badge-optional">optional</span></span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">connector</span>
+        <span class="param-type">BaseConnector | None</span>
+        <span class="param-desc">File source connector. Defaults to <code>LocalConnector</code>. <span class="badge badge-optional">optional</span></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">from structure_d.ingestion.manager import IngestionManager
+
+manager = IngestionManager()
+
+# Single file
+doc = await manager.ingest(Path("report.pdf"))
+# doc is a ParsedDocument
+
+# Multiple files (concurrent)
+docs = await manager.ingest_many(
+    [Path("a.pdf"), Path("b.html"), Path("c.docx")],
+    max_concurrent=4,
+)
+
+# From a connector (S3, GCS, Azure, SFTP)
+docs = await manager.ingest_from_connector(prefix="invoices/")</code></pre>
+  </div>
+
+  <h2 id="chunker">Chunker</h2>
+  <p>Splits a document's text into <code>TextChunk</code> objects. Used internally by the pipeline, but accessible directly.</p>
+
+  <div class="api-block">
+    <div class="api-block-header">
+      <div class="api-method-sig">
+        <span class="fn-name">Chunker</span>(<span class="fn-param">strategy, max_tokens, overlap_tokens, heading_level</span>)
+      </div>
+    </div>
+    <div class="api-block-section">
+      <p class="api-section-title">Parameters</p>
+      <div class="param-row">
+        <span class="param-name">strategy</span>
+        <span class="param-type">"fixed" | "sentence" | "heading" | "semantic"</span>
+        <span class="param-desc">Chunking algorithm. Default: <code>"semantic"</code>. <span class="badge badge-optional">optional</span></span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">max_tokens</span>
+        <span class="param-type">int</span>
+        <span class="param-desc">Maximum tokens per chunk. Default: <code>1024</code>. <span class="badge badge-optional">optional</span></span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">overlap_tokens</span>
+        <span class="param-type">int</span>
+        <span class="param-desc">Token overlap between adjacent chunks. Default: <code>128</code>. <span class="badge badge-optional">optional</span></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">from structure_d.preprocessing.chunker import Chunker
+
+chunker = Chunker(strategy="semantic", max_tokens=512)
+chunks = chunker.chunk(text, document_id="doc-123")
+
+for chunk in chunks:
+    print(f"[&#123;chunk.metadata.heading&#125;] &#123;chunk.text[:80]&#125;...")
+    print(f"  tokens: &#123;chunk.metadata.token_count&#125;, page: &#123;chunk.metadata.page_number&#125;")</code></pre>
+  </div>
+
+  <h2 id="normalize-text">normalize_text()</h2>
+
+  <div class="api-block">
+    <div class="api-block-header">
+      <div class="api-method-sig">
+        <span class="fn-name">normalize_text</span>(<span class="fn-param">text, *, normalize_unicode, strip_boilerplate, collapse_whitespace</span>) <span class="fn-type">→ str</span>
+      </div>
+      <p class="api-description">Clean extracted text before chunking. Removes control characters, collapses whitespace, strips page headers/footers.</p>
+    </div>
+    <div class="api-block-section">
+      <p class="api-section-title">Parameters</p>
+      <div class="param-row">
+        <span class="param-name">normalize_unicode</span>
+        <span class="param-type">bool</span>
+        <span class="param-desc">Apply NFC normalization and strip non-printable control characters. Default: <code>True</code>. <span class="badge badge-optional">optional</span></span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">strip_boilerplate</span>
+        <span class="param-type">bool</span>
+        <span class="param-desc">Remove page numbers, running headers/footers. Default: <code>True</code>. <span class="badge badge-optional">optional</span></span>
+      </div>
+      <div class="param-row">
+        <span class="param-name">collapse_whitespace</span>
+        <span class="param-type">bool</span>
+        <span class="param-desc">Collapse multiple spaces/newlines. Default: <code>True</code>. <span class="badge badge-optional">optional</span></span>
+      </div>
+    </div>
+  </div>
+
+  <h2 id="schema-validator">SchemaValidator</h2>
+  <p>Validates raw LLM text output against a Pydantic schema using a multi-step extraction strategy.</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">from structure_d.validation.validator import SchemaValidator
+
+validator = SchemaValidator(schema_cls=Invoice)
+
+# Validate raw LLM text
+data, errors = validator.validate(raw_text)
+# data: dict | list
+# errors: list[str] — empty if valid
+
+# Validate a pre-parsed dict
+data, errors = validator.validate_dict(&#123;"vendor": "Acme", "total": 1200.0&#125;)</code></pre>
+  </div>
+
+  <p>
+    The validator tries multiple extraction strategies in order:
+    direct JSON parse → extract from code fence → extract first <code>{"{...}"}</code> or <code>[...]</code> block.
+  </p>
+
+  <h2 id="retry-handler">RetryHandler</h2>
+  <p>Wraps an <code>ExtractionResult</code> and retries with the LLM provider if validation failed.</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">from structure_d.validation.retry import RetryHandler
+
+handler = RetryHandler(
+    schema_cls=Invoice,
+    task=TaskType.EXTRACTION,
+    provider=OpenAIProvider(),
+    max_retries=3,
+)
+
+# If result.is_valid is already True, this is a fast no-op
+result = await handler.validate_and_retry(
+    result=initial_result,
+    original_text=chunk.text,
+)</code></pre>
+  </div>
+
+  <h2 id="storage-writers">Storage writers</h2>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">from structure_d.storage.jsonl import JSONLWriter, save_as_jsonl
+from structure_d.storage.csv_store import CSVWriter, save_as_csv
+
+# JSONL
+writer = JSONLWriter(output_dir=Path("output/"), indent=None)
+path = writer.write(results, filename="out.jsonl")           # list[ExtractionResult]
+path = writer.write_dicts([&#123;"key": "val"&#125;], "raw.jsonl")     # raw dicts
+
+# CSV (flattens structured_output into dot-separated columns)
+writer = CSVWriter(output_dir=Path("output/"))
+path = writer.write(results, filename="out.csv")
+
+# Convenience functions
+save_as_jsonl(results, "output.jsonl")
+save_as_csv(results, "output.csv")</code></pre>
+  </div>
+
+  <h2 id="document-reader">DocumentReader</h2>
+  <p>High-level interface for loading and chunking documents into <code>Node</code> objects ready for indexing.</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">from structure_d.indexing.loading import DocumentReader
+
+reader = DocumentReader(
+    ingestion_manager=IngestionManager(),
+    chunker=Chunker(strategy="semantic"),
+)
+
+# Load a single document
+docs = await reader.load(Path("report.pdf"))          # list[Document]
+nodes = await reader.load_and_chunk(Path("report.pdf"))  # list[Node]
+
+# Load an entire directory
+docs = await reader.load_directory(
+    Path("knowledge_base/"),
+    glob="**/*.pdf",
+)
+nodes = await reader.load_directory_and_chunk(
+    Path("knowledge_base/"),
+    glob="**/*.&#123;pdf,html,docx&#125;",
+)</code></pre>
+  </div>
+
+  <h2 id="query-engine">QueryEngine</h2>
+  <p>Combines a <code>BaseRetriever</code> with an LLM provider to answer natural language questions over indexed documents.</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">from structure_d.indexing.query_engine import QueryEngine
+
+engine = index.as_query_engine(
+    provider=OpenAIProvider(),
+    top_k=5,
+    response_mode="simple",   # or "tree_summarize"
+)
+
+# Retrieve relevant nodes
+nodes = await engine.retrieve("termination clause", top_k=3)
+
+# Answer a question (retrieve + synthesize)
+answer = await engine.query(
+    "What are the payment terms?",
+    model="gpt-4o-mini",
+    temperature=0.0,
+    max_tokens=512,
+)
+print(answer)  # natural language response string</code></pre>
+  </div>
+</DocsLayout>
+
+<style>
+  .sk { color: var(--syntax-keyword); }
+  .fn-name { color: var(--syntax-function); }
+  .fn-param { color: var(--text-secondary); }
+  .fn-type { color: var(--syntax-type); }
+</style>

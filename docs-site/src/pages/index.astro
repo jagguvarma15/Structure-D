@@ -1,0 +1,1053 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Navbar from '../components/Navbar.astro';
+import Footer from '../components/Footer.astro';
+import SearchModal from '../components/SearchModal.astro';
+import '../styles/global.css';
+
+const base = import.meta.env.BASE_URL;
+
+const features = [
+  {
+    icon: '📄',
+    iconBg: 'rgba(56, 189, 248, 0.1)',
+    title: 'Multi-Format Ingestion',
+    description: 'Parse PDFs, images, HTML, DOCX, XLSX, PPTX, emails, audio transcripts, and plain text — all through a unified async interface.',
+  },
+  {
+    icon: '🧩',
+    iconBg: 'rgba(167, 139, 250, 0.1)',
+    title: 'Schema-Driven Extraction',
+    description: 'Define any Pydantic model as your output schema. Built-in schemas for key-value, table, entity, form, classification, and summary tasks.',
+  },
+  {
+    icon: '🤖',
+    iconBg: 'rgba(251, 191, 36, 0.1)',
+    title: 'Multi-Provider LLMs',
+    description: 'vLLM, OpenAI, Anthropic, Gemini, and Ollama — all behind a single interface. Automatic fallback chains and constrained decoding.',
+  },
+  {
+    icon: '🔍',
+    iconBg: 'rgba(52, 211, 153, 0.1)',
+    title: 'RAG & Vector Indexing',
+    description: 'Built-in DocumentReader, VectorStoreIndex, and QueryEngine. Plug in ChromaDB, pgvector, or any custom vector store.',
+  },
+  {
+    icon: '⚡',
+    iconBg: 'rgba(248, 124, 108, 0.1)',
+    title: 'High-Throughput Batch',
+    description: 'Async-first pipeline with concurrent batch processing. Run hundreds of documents in parallel with configurable concurrency limits.',
+  },
+  {
+    icon: '✅',
+    iconBg: 'rgba(56, 189, 248, 0.08)',
+    title: 'Validated Output',
+    description: 'Automatic schema validation on every extraction. LLM-retry with refined prompts on failure. Zero invalid JSON reaching your application.',
+  },
+];
+
+const stats = [
+  { value: '14+', label: 'File Formats' },
+  { value: '5',   label: 'LLM Providers' },
+  { value: '110', label: 'Tests Passing' },
+  { value: '<1ms', label: 'Validation overhead' },
+];
+
+const pipelineSteps = [
+  { label: 'Ingest', icon: '📂', color: '#38bdf8' },
+  { label: 'Preprocess', icon: '⚙️', color: '#a78bfa' },
+  { label: 'Route', icon: '🔀', color: '#fbbf24' },
+  { label: 'Infer', icon: '🧠', color: '#34d399' },
+  { label: 'Validate', icon: '✅', color: '#f87171' },
+  { label: 'Store', icon: '💾', color: '#38bdf8' },
+];
+---
+
+<BaseLayout title="Structure-D — Structured Data Extraction with LLMs" description="A modular pipeline framework that converts unstructured documents into validated, schema-constrained structured data using vLLM and multi-provider LLMs.">
+  <Navbar />
+
+  <!-- ──────────────────────────────────────────────
+       A. Hero Section
+       ────────────────────────────────────────────── -->
+  <section class="hero">
+    <div class="hero-bg">
+      <div class="hero-dot-grid"></div>
+      <div class="hero-glow"></div>
+    </div>
+
+    <div class="container hero-inner">
+      <div class="hero-badge reveal">
+        <span class="badge-dot"></span>
+        <span>v0.2.0</span>
+        <span class="badge-sep">·</span>
+        <span>Stable</span>
+      </div>
+
+      <h1 class="hero-title reveal" style="transition-delay: 80ms">
+        Extract <span class="gradient-text">structured data</span><br />
+        from any document
+      </h1>
+
+      <p class="hero-sub reveal" style="transition-delay: 160ms">
+        Structure-D ingests PDFs, images, HTML, and 11 other formats — then uses
+        vLLM structured outputs to extract validated, schema-constrained JSON.
+        Async-first. Provider-agnostic. Zero invalid output.
+      </p>
+
+      <div class="hero-cta reveal" style="transition-delay: 240ms">
+        <a href={`${base}docs/getting-started`} class="btn btn-primary">
+          Get Started
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M4 8a.5.5 0 0 1 .5-.5h5.793L8.146 5.354a.5.5 0 1 1 .708-.708l3 3a.5.5 0 0 1 0 .708l-3 3a.5.5 0 0 1-.708-.708L10.293 8.5H4.5A.5.5 0 0 1 4 8z"/>
+          </svg>
+        </a>
+        <a href={`${base}docs/api/overview`} class="btn btn-secondary">
+          API Reference
+        </a>
+      </div>
+
+      <div class="hero-install reveal" style="transition-delay: 320ms">
+        <div class="install-bar">
+          <span class="install-prompt">$</span>
+          <code class="install-cmd" id="install-cmd">pip install "structure-d[ingestion,api,llm]"</code>
+          <button class="install-copy" id="install-copy" aria-label="Copy install command">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" class="copy-icon" aria-hidden="true">
+              <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
+              <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
+            </svg>
+            <span class="copy-label">Copy</span>
+          </button>
+        </div>
+        <p class="install-alt">
+          or <a href={`${base}docs/installation`}>install the Rust CLI</a> for blazing-fast batch extraction
+        </p>
+      </div>
+
+      <div class="hero-scroll reveal" style="transition-delay: 400ms" aria-hidden="true">
+        <div class="scroll-line"></div>
+        <span>scroll</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ──────────────────────────────────────────────
+       B. Stats Strip
+       ────────────────────────────────────────────── -->
+  <section class="stats-section">
+    <div class="container">
+      <div class="stats-grid">
+        {stats.map((stat, i) => (
+          <div class="stat-card reveal" style={`transition-delay: ${i * 80}ms`}>
+            <span class="stat-value gradient-text">{stat.value}</span>
+            <span class="stat-label">{stat.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- ──────────────────────────────────────────────
+       C. Features Grid
+       ────────────────────────────────────────────── -->
+  <section class="features-section">
+    <div class="container">
+      <div class="section-header reveal">
+        <p class="label-mono">Features</p>
+        <h2 class="section-title">
+          Everything you need to<br />
+          <span class="gradient-text">structure unstructured data</span>
+        </h2>
+      </div>
+
+      <div class="features-grid">
+        {features.map((feat, i) => (
+          <div class="feature-card reveal" style={`transition-delay: ${(i % 3) * 100}ms`}>
+            <div class="feature-icon" style={`background: ${feat.iconBg}`}>
+              {feat.icon}
+            </div>
+            <h3 class="feature-title">{feat.title}</h3>
+            <p class="feature-desc">{feat.description}</p>
+            <div class="feature-hover-line"></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- ──────────────────────────────────────────────
+       D. Code Showcase
+       ────────────────────────────────────────────── -->
+  <section class="code-section">
+    <div class="container">
+      <div class="code-layout">
+        <div class="code-text reveal">
+          <p class="label-mono">Quick Start</p>
+          <h2 class="section-title">
+            Go from file to<br />
+            <span class="gradient-text">structured JSON</span><br />
+            in 5 lines
+          </h2>
+          <p class="section-desc">
+            Define a Pydantic model as your extraction schema.
+            Pass any file. Get back validated, structured results — automatically retried if the model output is invalid.
+          </p>
+          <div class="code-bullets">
+            <div class="code-bullet">
+              <span class="bullet-dot"></span>
+              <span>Auto-detects file format (PDF, image, HTML, ...)</span>
+            </div>
+            <div class="code-bullet">
+              <span class="bullet-dot"></span>
+              <span>Routes to the optimal model for your task</span>
+            </div>
+            <div class="code-bullet">
+              <span class="bullet-dot"></span>
+              <span>Validates output against your schema, retries on failure</span>
+            </div>
+          </div>
+          <a href={`${base}docs/guides/basic-usage`} class="btn btn-secondary" style="margin-top: 1.5rem">
+            Read the guide →
+          </a>
+        </div>
+
+        <div class="code-demo reveal" style="transition-delay: 120ms">
+          <div class="terminal-window">
+            <div class="terminal-titlebar">
+              <div class="terminal-dots">
+                <div class="terminal-dot red"></div>
+                <div class="terminal-dot yellow"></div>
+                <div class="terminal-dot green"></div>
+              </div>
+              <span class="terminal-title">extract_invoice.py</span>
+            </div>
+            <div class="terminal-body">
+              <pre class="code-showcase"><code><span class="sk">import</span> <span class="si">asyncio</span>
+<span class="sk">from</span> <span class="si">pathlib</span> <span class="sk">import</span> <span class="si">Path</span>
+<span class="sk">from</span> <span class="si">pydantic</span> <span class="sk">import</span> <span class="si">BaseModel</span>
+<span class="sk">from</span> <span class="si">structure_d.pipeline</span> <span class="sk">import</span> <span class="si">Pipeline</span>
+<span class="sk">from</span> <span class="si">structure_d.inference.providers</span> <span class="sk">import</span> <span class="si">OpenAIProvider</span>
+
+<span class="sk">class</span> <span class="st">Invoice</span>(<span class="si">BaseModel</span>):
+    vendor: <span class="st">str</span>
+    total: <span class="sn">float</span>
+    line_items: <span class="st">list</span>[<span class="st">str</span>]
+
+<span class="sk">async def</span> <span class="sf">main</span>():
+    pipeline = <span class="sf">Pipeline</span>(
+        schema_cls=<span class="st">Invoice</span>,
+        provider=<span class="sf">OpenAIProvider</span>(),
+    )
+    results = <span class="sk">await</span> pipeline.<span class="sf">run</span>(<span class="ss">Path</span>(<span class="sq">"invoice.pdf"</span>))
+    <span class="sk">print</span>(results[<span class="sn">0</span>].structured_output)
+    <span class="sc"># → &#123;"vendor": "Acme Corp", "total": 1240.0, ...&#125;</span>
+
+asyncio.<span class="sf">run</span>(<span class="sf">main</span>())</code></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ──────────────────────────────────────────────
+       E. Pipeline Architecture
+       ────────────────────────────────────────────── -->
+  <section class="pipeline-section">
+    <div class="container">
+      <div class="section-header reveal">
+        <p class="label-mono">Architecture</p>
+        <h2 class="section-title">
+          A modular <span class="gradient-text">six-stage pipeline</span>
+        </h2>
+        <p class="section-desc" style="max-width: 500px; margin: 0 auto">
+          Each stage is independently configurable and replaceable.
+          Override any component with your own implementation.
+        </p>
+      </div>
+
+      <div class="pipeline-flow reveal" style="transition-delay: 100ms">
+        {pipelineSteps.map((step, i) => (
+          <Fragment>
+            <div class="pipeline-step">
+              <div class="pipeline-icon" style={`border-color: ${step.color}30; box-shadow: 0 0 20px ${step.color}15`}>
+                <span class="pipeline-icon-emoji">{step.icon}</span>
+              </div>
+              <span class="pipeline-label">{step.label}</span>
+            </div>
+            {i < pipelineSteps.length - 1 && (
+              <div class="pipeline-arrow" aria-hidden="true">
+                <div class="pipeline-arrow-line"></div>
+                <div class="pipeline-arrow-head"></div>
+              </div>
+            )}
+          </Fragment>
+        ))}
+      </div>
+
+      <div class="pipeline-formats reveal" style="transition-delay: 200ms">
+        <p class="formats-label">Supported formats</p>
+        <div class="formats-list">
+          {['PDF', 'PNG/JPG', 'HTML', 'DOCX', 'XLSX', 'PPTX', 'Email', 'Audio', 'CSV', 'Markdown', 'Plain Text', '+more'].map(f => (
+            <span class="format-badge">{f}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ──────────────────────────────────────────────
+       F. Multi-Provider Section
+       ────────────────────────────────────────────── -->
+  <section class="providers-section">
+    <div class="container">
+      <div class="providers-layout">
+        <div class="providers-text reveal">
+          <p class="label-mono">Providers</p>
+          <h2 class="section-title">
+            One interface.<br />
+            <span class="gradient-text">Any LLM provider.</span>
+          </h2>
+          <p class="section-desc">
+            Switch between providers with a single config change. Chain them
+            together for automatic fallback when one goes down.
+          </p>
+          <div class="provider-cards">
+            <div class="provider-card">
+              <span class="provider-name">vLLM</span>
+              <span class="provider-tag">self-hosted</span>
+            </div>
+            <div class="provider-card">
+              <span class="provider-name">OpenAI</span>
+              <span class="provider-tag">gpt-4o</span>
+            </div>
+            <div class="provider-card">
+              <span class="provider-name">Anthropic</span>
+              <span class="provider-tag">claude-3.5</span>
+            </div>
+            <div class="provider-card">
+              <span class="provider-name">Gemini</span>
+              <span class="provider-tag">gemini-1.5</span>
+            </div>
+            <div class="provider-card">
+              <span class="provider-name">Ollama</span>
+              <span class="provider-tag">local</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="providers-code reveal" style="transition-delay: 120ms">
+          <div class="code-block-wrapper">
+            <div class="code-block-header">
+              <span class="code-block-filename">configs/default.yaml</span>
+              <span class="code-block-lang">yaml</span>
+            </div>
+            <pre class="code-showcase"><code><span class="sk">inference</span>:
+  <span class="sk">provider</span>:
+    <span class="sk">provider</span>: <span class="sq">"vllm"</span>          <span class="sc"># primary</span>
+    <span class="sk">fallback_provider</span>: <span class="sq">"anthropic"</span>
+
+    <span class="sk">vllm</span>:
+      <span class="sk">api_base</span>: <span class="sq">"http://localhost:8000"</span>
+      <span class="sk">model</span>: <span class="sq">"meta-llama/Llama-3.1-8B-Instruct"</span>
+
+    <span class="sk">anthropic</span>:
+      <span class="sk">model</span>: <span class="sq">"claude-3-5-sonnet-20241022"</span>
+      <span class="sk">api_key</span>: <span class="sn">null</span>   <span class="sc"># reads ANTHROPIC_API_KEY</span>
+
+<span class="sk">validation</span>:
+  <span class="sk">max_retries</span>: <span class="sn">3</span>   <span class="sc"># retry on invalid JSON</span></code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ──────────────────────────────────────────────
+       G. CTA Section
+       ────────────────────────────────────────────── -->
+  <section class="cta-section">
+    <div class="cta-glow"></div>
+    <div class="container">
+      <div class="cta-inner reveal">
+        <p class="label-mono">Ready to start?</p>
+        <h2 class="cta-title">
+          Start extracting <span class="gradient-text">structured data</span><br />
+          in minutes
+        </h2>
+        <p class="cta-desc">
+          Open-source, MIT licensed. No API key required for local models.
+          Deploy as a FastAPI service or use the Rust CLI.
+        </p>
+        <div class="cta-buttons">
+          <a href={`${base}docs/getting-started`} class="btn btn-primary btn-lg">
+            Read the Docs
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M4 8a.5.5 0 0 1 .5-.5h5.793L8.146 5.354a.5.5 0 1 1 .708-.708l3 3a.5.5 0 0 1 0 .708l-3 3a.5.5 0 0 1-.708-.708L10.293 8.5H4.5A.5.5 0 0 1 4 8z"/>
+            </svg>
+          </a>
+          <a href="https://github.com/JagadeshVarma/Structure-D" target="_blank" rel="noopener" class="btn btn-secondary btn-lg">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+            </svg>
+            Star on GitHub
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <Footer />
+  <SearchModal />
+</BaseLayout>
+
+<script>
+  // Install copy button
+  const copyBtn = document.getElementById('install-copy');
+  const cmd = document.getElementById('install-cmd');
+  copyBtn?.addEventListener('click', async () => {
+    await navigator.clipboard.writeText(cmd?.textContent?.trim() ?? '');
+    const label = copyBtn.querySelector('.copy-label');
+    const icon = copyBtn.querySelector('.copy-icon');
+    if (label) label.textContent = 'Copied!';
+    copyBtn.style.borderColor = 'var(--success)';
+    copyBtn.style.color = 'var(--success)';
+    setTimeout(() => {
+      if (label) label.textContent = 'Copy';
+      copyBtn.style.borderColor = '';
+      copyBtn.style.color = '';
+    }, 2000);
+  });
+</script>
+
+<style>
+  /* ── Hero ─────────────────────────────── */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-top: var(--nav-height);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero-bg {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  .hero-dot-grid {
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle, rgba(255,255,255,0.06) 1px, transparent 1px);
+    background-size: 32px 32px;
+    mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 40%, transparent 100%);
+    -webkit-mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 40%, transparent 100%);
+  }
+
+  .hero-glow {
+    position: absolute;
+    top: 30%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 600px;
+    height: 400px;
+    background: radial-gradient(ellipse at center, rgba(56, 189, 248, 0.07) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .hero-inner {
+    position: relative;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-4);
+    padding-top: var(--space-8);
+    padding-bottom: var(--space-8);
+  }
+
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 14px;
+    border: 1px solid var(--border-default);
+    border-radius: 9999px;
+    background: var(--bg-secondary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    backdrop-filter: blur(8px);
+  }
+
+  .badge-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--success);
+    animation: badge-pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes badge-pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.5; }
+  }
+
+  .badge-sep { color: var(--text-dim); }
+
+  .hero-title {
+    font-family: var(--font-display);
+    font-size: var(--text-hero);
+    font-weight: 400;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    color: var(--text-primary);
+    max-width: 14ch;
+  }
+
+  .hero-sub {
+    font-size: var(--text-lg);
+    color: var(--text-secondary);
+    max-width: 540px;
+    line-height: 1.65;
+  }
+
+  .hero-cta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .hero-install {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    margin-top: var(--space-2);
+  }
+
+  .install-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    max-width: 520px;
+    width: 100%;
+    transition: border-color var(--duration-fast);
+  }
+
+  .install-bar:hover { border-color: var(--border-bright); }
+
+  .install-prompt { color: var(--success); flex-shrink: 0; }
+  .install-cmd { color: var(--text-primary); flex: 1; text-align: left; background: none; border: none; padding: 0; font-size: inherit; }
+
+  .install-copy {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all var(--duration-fast);
+  }
+
+  .install-copy:hover { color: var(--text-primary); border-color: var(--border-bright); }
+
+  .install-alt {
+    font-size: var(--text-sm);
+    color: var(--text-dim);
+  }
+
+  .install-alt a { color: var(--text-secondary); }
+  .install-alt a:hover { color: var(--accent); }
+
+  .hero-scroll {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    margin-top: var(--space-4);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+  }
+
+  .scroll-line {
+    width: 1px;
+    height: 40px;
+    background: linear-gradient(to bottom, var(--border-default), transparent);
+    animation: scroll-bounce 2s ease-in-out infinite;
+  }
+
+  @keyframes scroll-bounce {
+    0%, 100% { transform: scaleY(1); }
+    50%       { transform: scaleY(0.6); }
+  }
+
+  /* ── Stats ─────────────────────────────── */
+  .stats-section {
+    padding: var(--space-7) 0;
+    border-top: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--bg-primary);
+  }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-3);
+  }
+
+  .stat-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: var(--space-4) var(--space-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    background: var(--bg-secondary);
+    transition: all var(--duration-normal) var(--ease-out-expo);
+  }
+
+  .stat-card:hover {
+    border-color: var(--border-default);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  }
+
+  .stat-value {
+    font-family: var(--font-display);
+    font-size: clamp(1.75rem, 3vw, 2.5rem);
+    font-weight: 400;
+    line-height: 1;
+  }
+
+  .stat-label {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    text-align: center;
+  }
+
+  /* ── Features ─────────────────────────────── */
+  .features-section {
+    padding: var(--space-8) 0;
+  }
+
+  .section-header {
+    text-align: center;
+    margin-bottom: var(--space-7);
+  }
+
+  .section-title {
+    font-family: var(--font-display);
+    font-size: var(--text-3xl);
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    color: var(--text-primary);
+    margin-top: 12px;
+  }
+
+  .section-desc {
+    font-size: var(--text-base);
+    color: var(--text-secondary);
+    line-height: 1.7;
+    margin-top: 12px;
+    max-width: 560px;
+  }
+
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-3);
+  }
+
+  .feature-card {
+    position: relative;
+    padding: var(--space-4);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    background: var(--bg-secondary);
+    overflow: hidden;
+    transition: all var(--duration-normal) var(--ease-out-expo);
+    cursor: default;
+  }
+
+  .feature-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0;
+    transition: opacity var(--duration-normal) var(--ease-in-out);
+  }
+
+  .feature-card:hover {
+    border-color: var(--border-default);
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  }
+
+  .feature-card:hover::before { opacity: 1; }
+
+  .feature-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    margin-bottom: 16px;
+  }
+
+  .feature-title {
+    font-size: var(--text-base);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+  }
+
+  .feature-desc {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    line-height: 1.65;
+  }
+
+  /* ── Code Showcase ─────────────────────────────── */
+  .code-section {
+    padding: var(--space-8) 0;
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .code-layout {
+    display: grid;
+    grid-template-columns: 1fr 1.2fr;
+    gap: var(--space-7);
+    align-items: center;
+  }
+
+  .code-text .section-title {
+    text-align: left;
+    margin-top: 12px;
+    font-size: var(--text-2xl);
+  }
+
+  .code-text .section-desc { margin-top: 16px; }
+
+  .code-bullets {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: var(--space-4);
+  }
+
+  .code-bullet {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+  }
+
+  .bullet-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+    margin-top: 6px;
+  }
+
+  /* Inline code coloring */
+  .code-showcase { margin: 0; padding: 20px 24px; overflow-x: auto; }
+  .sk { color: var(--syntax-keyword); }
+  .si { color: var(--syntax-function); }
+  .st { color: var(--syntax-type); }
+  .sf { color: var(--syntax-function); }
+  .sn { color: var(--syntax-number); }
+  .ss { color: var(--syntax-operator); }
+  .sq { color: var(--syntax-string); }
+  .sc { color: var(--syntax-comment); }
+
+  /* ── Pipeline ─────────────────────────────── */
+  .pipeline-section {
+    padding: var(--space-8) 0;
+    border-top: 1px solid var(--border-subtle);
+    background: var(--bg-primary);
+  }
+
+  .pipeline-flow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0;
+    margin: var(--space-6) 0;
+  }
+
+  .pipeline-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .pipeline-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 14px;
+    border: 1px solid;
+    background: var(--bg-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--duration-normal) var(--ease-out-expo);
+  }
+
+  .pipeline-icon:hover {
+    transform: translateY(-4px) scale(1.05);
+  }
+
+  .pipeline-icon-emoji { font-size: 24px; }
+
+  .pipeline-label {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+
+  .pipeline-arrow {
+    display: flex;
+    align-items: center;
+    width: 40px;
+    margin-bottom: 26px;
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .pipeline-arrow-line {
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, var(--border-default), var(--accent), var(--border-default));
+    background-size: 200% 100%;
+    animation: flow 2s linear infinite;
+  }
+
+  @keyframes flow {
+    0%   { background-position: 100% 0; }
+    100% { background-position: -100% 0; }
+  }
+
+  .pipeline-arrow-head {
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-width: 4px 0 4px 6px;
+    border-color: transparent transparent transparent var(--accent);
+    flex-shrink: 0;
+  }
+
+  .pipeline-formats {
+    text-align: center;
+    border-top: 1px solid var(--border-subtle);
+    padding-top: var(--space-5);
+  }
+
+  .formats-label {
+    font-size: var(--text-sm);
+    color: var(--text-dim);
+    margin-bottom: 14px;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .formats-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+  }
+
+  .format-badge {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 4px 10px;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    transition: all var(--duration-fast);
+  }
+
+  .format-badge:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-subtle);
+  }
+
+  /* ── Providers ─────────────────────────────── */
+  .providers-section {
+    padding: var(--space-8) 0;
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .providers-layout {
+    display: grid;
+    grid-template-columns: 1fr 1.2fr;
+    gap: var(--space-7);
+    align-items: center;
+  }
+
+  .providers-text .section-title {
+    text-align: left;
+    margin-top: 12px;
+    font-size: var(--text-2xl);
+  }
+
+  .providers-text .section-desc { margin-top: 16px; }
+
+  .provider-cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: var(--space-4);
+  }
+
+  .provider-card {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    transition: all var(--duration-fast);
+  }
+
+  .provider-card:hover {
+    border-color: var(--accent);
+    background: var(--accent-subtle);
+    transform: translateY(-2px);
+  }
+
+  .provider-name {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+
+  .provider-tag {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    background: var(--bg-elevated);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+
+  /* ── CTA ─────────────────────────────── */
+  .cta-section {
+    padding: var(--space-8) 0;
+    border-top: 1px solid var(--border-subtle);
+    position: relative;
+    overflow: hidden;
+    text-align: center;
+  }
+
+  .cta-glow {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 600px;
+    height: 300px;
+    background: radial-gradient(ellipse, rgba(167, 139, 250, 0.06) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .cta-inner {
+    position: relative;
+    max-width: 640px;
+    margin: 0 auto;
+  }
+
+  .cta-title {
+    font-family: var(--font-display);
+    font-size: var(--text-3xl);
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    color: var(--text-primary);
+    margin-top: 12px;
+    margin-bottom: 16px;
+  }
+
+  .cta-desc {
+    font-size: var(--text-base);
+    color: var(--text-secondary);
+    line-height: 1.7;
+    margin-bottom: var(--space-5);
+  }
+
+  .cta-buttons {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .btn-lg { padding: 0.8rem 1.75rem; font-size: var(--text-base); }
+
+  /* ── Responsive ─────────────────────────────── */
+  @media (max-width: 1024px) {
+    .code-layout, .providers-layout { grid-template-columns: 1fr; }
+    .code-text .section-title, .providers-text .section-title { text-align: center; }
+    .code-text .section-desc, .providers-text .section-desc { max-width: 100%; }
+    .code-bullets { max-width: 480px; margin: var(--space-4) auto 0; }
+    .provider-cards { justify-content: center; }
+  }
+
+  @media (max-width: 768px) {
+    .features-grid { grid-template-columns: repeat(2, 1fr); }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .pipeline-arrow { width: 24px; }
+  }
+
+  @media (max-width: 640px) {
+    .features-grid { grid-template-columns: 1fr; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .hero-cta { flex-direction: column; width: 100%; }
+    .hero-cta .btn { width: 100%; justify-content: center; }
+    .pipeline-flow { gap: 4px; }
+    .pipeline-arrow { width: 16px; }
+    .pipeline-icon { width: 48px; height: 48px; }
+    .pipeline-icon-emoji { font-size: 20px; }
+    .install-cmd { font-size: 11px; }
+  }
+</style>

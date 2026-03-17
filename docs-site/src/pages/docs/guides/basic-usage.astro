@@ -1,0 +1,229 @@
+---
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+
+const base = import.meta.env.BASE_URL;
+
+const toc = [
+  { text: 'Single file extraction', id: 'single-file', depth: 2 },
+  { text: 'Built-in schemas', id: 'builtin-schemas', depth: 2 },
+  { text: 'Custom schemas', id: 'custom-schemas', depth: 2 },
+  { text: 'Multiple files', id: 'multiple-files', depth: 2 },
+  { text: 'Saving output', id: 'saving-output', depth: 2 },
+  { text: 'Choosing a parser', id: 'choosing-parser', depth: 2 },
+  { text: 'Reading results', id: 'reading-results', depth: 2 },
+];
+---
+
+<DocsLayout
+  title="Basic Usage"
+  description="Extract structured data from PDFs, images, HTML, and Office documents."
+  toc={toc}
+  editPath="/docs/guides/basic-usage.astro"
+  prev={{ label: 'Configuration', href: `${base}docs/configuration` }}
+  next={{ label: 'Advanced Usage', href: `${base}docs/guides/advanced` }}
+>
+  <h2 id="single-file">Single file extraction</h2>
+  <p>The <code>Pipeline.run()</code> method takes a file path and returns a list of <code>ExtractionResult</code> objects — one per document chunk.</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">import asyncio
+from pathlib import Path
+from structure_d.pipeline import Pipeline
+from structure_d.schemas.generic import KeyValueExtraction
+from structure_d.inference.providers import AnthropicProvider
+
+async def main():
+    pipeline = Pipeline(
+        schema_cls=KeyValueExtraction,
+        provider=AnthropicProvider(),
+    )
+
+    results = await pipeline.run(Path("contract.pdf"))
+
+    for r in results:
+        if r.is_valid:
+            print(r.structured_output)   # dict
+            print(f"Latency: &#123;r.latency_ms:.0f&#125;ms")
+            print(f"Tokens: &#123;r.token_usage['total_tokens']&#125;")
+
+asyncio.run(main())</code></pre>
+  </div>
+
+  <h2 id="builtin-schemas">Built-in schemas</h2>
+  <p>Structure-D ships with eight task-oriented schemas. Use them by name:</p>
+
+  <div class="prose-table-wrapper">
+    <table class="prose-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Schema class</th>
+          <th>Output shape</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><code>key_value</code></td><td><code>KeyValueExtraction</code></td><td>List of <code>{"{key, value, confidence, page}"}</code></td></tr>
+        <tr><td><code>table</code></td><td><code>TableExtraction</code></td><td>Headers + list of row dicts</td></tr>
+        <tr><td><code>entity</code></td><td><code>EntityExtraction</code></td><td>List of <code>{"{text, label, start, end}"}</code></td></tr>
+        <tr><td><code>classification</code></td><td><code>ClassificationResult</code></td><td>Label, confidence, all labels + scores</td></tr>
+        <tr><td><code>summary</code></td><td><code>SummaryResult</code></td><td>Summary string + bullet points</td></tr>
+        <tr><td><code>form</code></td><td><code>FormExtraction</code></td><td>List of form fields with bounding box + page</td></tr>
+        <tr><td><code>document_structure</code></td><td><code>DocumentStructure</code></td><td>Title, sections with heading/body/level</td></tr>
+        <tr><td><code>generic</code></td><td><code>GenericExtraction</code></td><td>Open — accepts any JSON fields</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">from structure_d.schemas.generic import get_schema, BUILTIN_SCHEMAS
+
+# By name
+TableSchema = get_schema("table")
+
+# List all available
+print(list(BUILTIN_SCHEMAS.keys()))
+# ['generic', 'key_value', 'table', 'entity', 'classification', 'summary', 'form', 'document_structure']</code></pre>
+  </div>
+
+  <h2 id="custom-schemas">Custom schemas</h2>
+  <p>Any Pydantic v2 model works as an extraction schema. Nest models for complex structures:</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">from pydantic import BaseModel, Field
+
+class LineItem(BaseModel):
+    description: str
+    quantity: int
+    unit_price: float
+    total: float
+
+class Invoice(BaseModel):
+    vendor: str
+    invoice_number: str = Field(description="Invoice or receipt number")
+    issue_date: str | None = None
+    due_date: str | None = None
+    currency: str = "USD"
+    subtotal: float
+    tax: float = 0.0
+    total_amount: float
+    line_items: list[LineItem] = []
+
+pipeline = Pipeline(schema_cls=Invoice, provider=OpenAIProvider())</code></pre>
+  </div>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div class="callout-body">
+      <p class="callout-title">Use Field descriptions</p>
+      <p class="callout-content">Pydantic's <code>Field(description=...)</code> is included in the JSON schema sent to the model. More descriptive field descriptions lead to better extraction accuracy.</p>
+    </div>
+  </div>
+
+  <h2 id="multiple-files">Multiple files</h2>
+  <p>Use <code>run_many()</code> to process a list of files concurrently:</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">files = list(Path("invoices/").glob("*.pdf"))
+
+results = await pipeline.run_many(
+    files,
+    max_concurrent=8,       # default from config
+    save_format="jsonl",    # save each result automatically
+)
+
+# results is a dict: &#123;filename: [ExtractionResult, ...]&#125;
+for filename, file_results in results.items():
+    valid = [r for r in file_results if r.is_valid]
+    print(f"&#123;filename&#125;: &#123;len(valid)&#125;/&#123;len(file_results)&#125; valid")</code></pre>
+  </div>
+
+  <h2 id="saving-output">Saving output</h2>
+  <p>Pass <code>save_format</code> to automatically write results after extraction:</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python"># Save to JSONL
+results = await pipeline.run(
+    Path("report.pdf"),
+    save_format="jsonl",
+    output_filename="report_extracted.jsonl",
+)
+
+# Or manually using storage writers
+from structure_d.storage.jsonl import JSONLWriter
+from structure_d.storage.csv_store import CSVWriter
+
+writer = JSONLWriter(output_dir=Path("output/"))
+path = writer.write(results, filename="output.jsonl")</code></pre>
+  </div>
+
+  <h2 id="choosing-parser">Choosing a parser</h2>
+  <p>
+    By default, Structure-D auto-selects the best parser for each file extension.
+    Override this with <code>parser_name</code>:
+  </p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python"># Force OCR even for a regular PDF
+results = await pipeline.run(
+    Path("scanned_form.pdf"),
+    parser_name="ocr_pdf",     # uses Tesseract-based parser
+)
+
+# Available parsers:
+# pymupdf, pdfplumber, ocr_pdf       — PDF
+# tesseract_image                     — images (PNG, JPG, TIFF)
+# html                                — HTML/web pages
+# docx, xlsx, pptx                    — Office documents
+# email                               — .eml / .msg files
+# transcript                          — audio transcripts
+# plaintext                           — .txt, .md, .csv</code></pre>
+  </div>
+
+  <h2 id="reading-results">Reading results</h2>
+  <p>Each <code>ExtractionResult</code> contains everything you need for downstream processing:</p>
+
+  <div class="code-block-wrapper">
+    <div class="code-block-header">
+      <span class="code-block-lang">python</span>
+      <button class="code-block-copy">Copy</button>
+    </div>
+    <pre><code class="language-python">result = results[0]
+
+result.result_id          # unique UUID string
+result.document_id        # UUID of the source document
+result.source_format      # DocumentFormat enum
+result.task               # TaskType enum
+result.model_used         # "gpt-4o", "llama-3.1-8b", etc.
+result.structured_output  # dict or list — your schema's data
+result.is_valid           # True if schema validation passed
+result.validation_errors  # list of error messages (empty if valid)
+result.raw_output         # raw LLM text response
+result.latency_ms         # end-to-end latency in milliseconds
+result.token_usage        # &#123;"prompt_tokens": 320, "completion_tokens": 84, "total_tokens": 404&#125;
+result.created_at         # datetime</code></pre>
+  </div>
+</DocsLayout>
