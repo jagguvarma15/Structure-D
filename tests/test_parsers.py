@@ -1,4 +1,4 @@
-"""Tests for built-in parsers that need no heavy external deps (text, HTML, email)."""
+"""Tests for built-in parsers that need no heavy external deps (text, HTML, email, docx)."""
 
 from __future__ import annotations
 
@@ -8,8 +8,9 @@ import pytest
 
 from structure_d.ingestion.email_parser import EmailParser
 from structure_d.ingestion.html_parser import HTMLParser
+from structure_d.ingestion.office import DocxParser
 from structure_d.ingestion.text import PlainTextParser
-from structure_d.schemas.base import ParsedDocument
+from structure_d.schemas.base import DocumentFormat, ParsedDocument
 
 
 # ── PlainTextParser ──────────────────────────────────────────────────────────
@@ -96,3 +97,67 @@ async def test_email_can_handle():
     parser = EmailParser()
     assert parser.can_handle(Path("msg.eml")) is True
     assert parser.can_handle(Path("msg.txt")) is False
+
+
+# ── DocxParser ────────────────────────────────────────────────────────────────
+
+
+async def test_docx_parse_text(sample_docx_file: Path):
+    """DocxParser should extract paragraph text from a .docx file."""
+    parser = DocxParser()
+    doc = await parser.parse(sample_docx_file)
+
+    assert isinstance(doc, ParsedDocument)
+    assert "Structure-D" in doc.text
+    assert doc.metadata.filename == "sample.docx"
+    assert doc.metadata.file_extension == ".docx"
+    assert doc.metadata.file_size_bytes > 0
+    assert doc.metadata.format == DocumentFormat.DOCX
+
+
+async def test_docx_parse_headings(sample_docx_file: Path):
+    """DocxParser should prefix Heading 1/2/3 paragraphs with Markdown markers."""
+    parser = DocxParser()
+    doc = await parser.parse(sample_docx_file)
+
+    assert "# Sample Report" in doc.text
+    assert "## Introduction" in doc.text
+
+
+async def test_docx_parse_tables(sample_docx_file: Path):
+    """DocxParser should extract tables as indexed 2-D lists."""
+    parser = DocxParser()
+    doc = await parser.parse(sample_docx_file)
+
+    assert len(doc.tables) == 1
+    table = doc.tables[0]
+    assert table["index"] == 0
+    assert table["data"][0] == ["Name", "Value"]
+    assert table["data"][1] == ["vendor", "Acme Corp"]
+    assert table["data"][2] == ["total", "1240.00"]
+
+
+async def test_docx_table_text_in_body(sample_docx_file: Path):
+    """Table cell content should also appear in the main text body."""
+    parser = DocxParser()
+    doc = await parser.parse(sample_docx_file)
+
+    assert "Acme Corp" in doc.text
+    assert "1240.00" in doc.text
+
+
+async def test_docx_parse_page_count(sample_docx_file: Path):
+    """DocxParser should report page_count=1 for a doc with no explicit page breaks."""
+    parser = DocxParser()
+    doc = await parser.parse(sample_docx_file)
+
+    assert doc.metadata.page_count == 1
+
+
+async def test_docx_can_handle():
+    """can_handle should return True for .docx (any case) and False for other types."""
+    parser = DocxParser()
+    assert parser.can_handle(Path("report.docx")) is True
+    assert parser.can_handle(Path("report.DOCX")) is True
+    assert parser.can_handle(Path("report.pdf")) is False
+    assert parser.can_handle(Path("report.xlsx")) is False

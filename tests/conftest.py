@@ -77,6 +77,30 @@ def sample_csv_file(tmp_path: Path) -> Path:
     return f
 
 
+@pytest.fixture()
+def sample_docx_file(tmp_path: Path) -> Path:
+    """A .docx file with headings, paragraphs, and a table for parser tests."""
+    from docx import Document
+
+    doc = Document()
+    doc.add_heading("Sample Report", level=1)
+    doc.add_heading("Introduction", level=2)
+    doc.add_paragraph("Structure-D extracts structured data from documents.")
+    doc.add_paragraph("It supports multiple file formats.")
+
+    table = doc.add_table(rows=3, cols=2)
+    table.cell(0, 0).text = "Name"
+    table.cell(0, 1).text = "Value"
+    table.cell(1, 0).text = "vendor"
+    table.cell(1, 1).text = "Acme Corp"
+    table.cell(2, 0).text = "total"
+    table.cell(2, 1).text = "1240.00"
+
+    path = tmp_path / "sample.docx"
+    doc.save(str(path))
+    return path
+
+
 # ── Schema / result helpers ──────────────────────────────────────────────────
 
 
