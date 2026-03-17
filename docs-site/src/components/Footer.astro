@@ -2,141 +2,183 @@
 const base = import.meta.env.BASE_URL;
 ---
 
-<footer class="footer">
-  <div class="footer-inner container">
+<footer class="site-footer">
+  <div class="container footer-inner">
     <div class="footer-brand">
-      <span class="footer-logo">structure-d</span>
-      <span class="footer-desc">Convert unstructured documents into validated structured data.</span>
+      <a href={base} class="footer-logo">structure-d</a>
+      <p class="footer-tagline">
+        Modular LLM pipeline for extracting structured data<br />from any document format.
+      </p>
+      <div class="footer-badges">
+        <img src="https://img.shields.io/badge/python-3.10%2B-blue?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+" loading="lazy" />
+        <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License" loading="lazy" />
+      </div>
     </div>
 
-    <div class="footer-links">
-      <div class="footer-col">
-        <span class="footer-col-title">Documentation</span>
-        <a href={`${base}docs/getting-started`}>Getting Started</a>
-        <a href={`${base}docs/installation`}>Installation</a>
-        <a href={`${base}docs/configuration`}>Configuration</a>
-        <a href={`${base}docs/guides/basic-usage`}>Basic Usage</a>
-      </div>
-      <div class="footer-col">
-        <span class="footer-col-title">API Reference</span>
-        <a href={`${base}docs/api/overview`}>Overview</a>
-        <a href={`${base}docs/api/core`}>Core Pipeline</a>
-        <a href={`${base}docs/api/models`}>Models & Providers</a>
-        <a href={`${base}docs/api/utilities`}>Utilities</a>
-      </div>
-      <div class="footer-col">
-        <span class="footer-col-title">Project</span>
-        <a href={`${base}changelog`}>Changelog</a>
-        <a href="https://github.com/JagadeshVarma/Structure-D" target="_blank" rel="noopener">GitHub ↗</a>
-        <a href="https://github.com/JagadeshVarma/Structure-D/issues" target="_blank" rel="noopener">Issues ↗</a>
-        <a href="https://github.com/JagadeshVarma/Structure-D/blob/main/LICENSE" target="_blank" rel="noopener">MIT License ↗</a>
-      </div>
+    <div class="footer-links-group">
+      <h4 class="footer-group-title">Docs</h4>
+      <ul class="footer-links" role="list">
+        <li><a href={`${base}docs/getting-started`}>Getting Started</a></li>
+        <li><a href={`${base}docs/installation`}>Installation</a></li>
+        <li><a href={`${base}docs/configuration`}>Configuration</a></li>
+        <li><a href={`${base}docs/guides/basic-usage`}>Basic Usage</a></li>
+        <li><a href={`${base}docs/guides/advanced`}>Advanced</a></li>
+        <li><a href={`${base}docs/guides/deployment`}>Deployment</a></li>
+      </ul>
+    </div>
+
+    <div class="footer-links-group">
+      <h4 class="footer-group-title">AI</h4>
+      <ul class="footer-links" role="list">
+        <li><a href={`${base}docs/api/overview`}>Overview</a></li>
+        <li><a href={`${base}docs/api/core`}>Core Pipeline</a></li>
+        <li><a href={`${base}docs/api/models`}>Models</a></li>
+        <li><a href={`${base}docs/api/utilities`}>Utilities</a></li>
+        <li><a href={`${base}changelog`}>Changelog</a></li>
+      </ul>
+    </div>
+
+    <div class="footer-links-group">
+      <h4 class="footer-group-title">Project</h4>
+      <ul class="footer-links" role="list">
+        <li><a href="https://github.com/JagadeshVarma/Structure-D" target="_blank" rel="noopener">GitHub ↗</a></li>
+        <li><a href="https://github.com/JagadeshVarma/Structure-D/issues" target="_blank" rel="noopener">Issues ↗</a></li>
+        <li><a href="https://github.com/JagadeshVarma/Structure-D/discussions" target="_blank" rel="noopener">Discussions ↗</a></li>
+        <li><a href="https://github.com/JagadeshVarma/Structure-D/blob/main/LICENSE" target="_blank" rel="noopener">License (MIT) ↗</a></li>
+      </ul>
     </div>
   </div>
 
   <div class="footer-bottom container">
-    <span>Built by <a href="https://github.com/JagadeshVarma" target="_blank" rel="noopener">@JagadeshVarma</a> · MIT License · Python 3.10+</span>
-    <span class="footer-version">v0.2.0</span>
+    <p class="footer-copy">
+      &copy; {new Date().getFullYear()} Structure-D. Built with
+      <a href="https://astro.build" target="_blank" rel="noopener">Astro</a>.
+      Released under the
+      <a href="https://github.com/JagadeshVarma/Structure-D/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>.
+    </p>
+    <p class="footer-made">
+      <span class="status-dot"></span>
+      Open source · MIT License
+    </p>
   </div>
 </footer>
 
 <style>
-  .footer {
-    border-top: 1px solid var(--border-subtle);
-    margin-top: var(--space-8);
-    padding: var(--space-7) 0 var(--space-4);
-    background: var(--bg-primary);
+  .site-footer {
+    border-top: 1px solid var(--border-default);
+    padding-top: var(--space-7);
+    background: var(--bg-secondary);
   }
 
   .footer-inner {
     display: grid;
-    grid-template-columns: 1fr auto;
-    gap: var(--space-7);
-    margin-bottom: var(--space-6);
-  }
-
-  .footer-brand {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+    grid-template-columns: 1.8fr 1fr 1fr 1fr;
+    gap: var(--space-6);
+    padding-bottom: var(--space-6);
   }
 
   .footer-logo {
     font-family: var(--font-mono);
-    font-size: var(--text-sm);
+    font-size: var(--text-base);
     font-weight: 500;
     color: var(--text-primary);
+    text-decoration: none;
+    transition: color var(--duration-fast);
   }
 
-  .footer-desc {
+  .footer-logo:hover { color: var(--accent); }
+
+  .footer-tagline {
+    margin-top: 10px;
     font-size: var(--text-sm);
-    color: var(--text-dim);
-    max-width: 280px;
+    color: var(--text-secondary);
+    line-height: 1.65;
   }
 
-  .footer-links {
+  .footer-badges {
     display: flex;
-    gap: var(--space-7);
+    gap: 8px;
+    margin-top: 14px;
+    flex-wrap: wrap;
   }
 
-  .footer-col {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    min-width: 140px;
-  }
-
-  .footer-col-title {
+  .footer-group-title {
     font-size: var(--text-xs);
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--text-dim);
-    margin-bottom: 4px;
+    margin-bottom: 14px;
   }
 
-  .footer-col a {
+  .footer-links {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .footer-links a {
     font-size: var(--text-sm);
     color: var(--text-secondary);
     text-decoration: none;
     transition: color var(--duration-fast);
   }
 
-  .footer-col a:hover { color: var(--text-primary); }
+  .footer-links a:hover { color: var(--accent); }
 
   .footer-bottom {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding-top: var(--space-4);
-    border-top: 1px solid var(--border-subtle);
-    font-size: var(--text-xs);
+    padding-bottom: var(--space-4);
+    border-top: 1px solid var(--border-default);
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .footer-copy {
+    font-size: var(--text-sm);
     color: var(--text-dim);
   }
 
-  .footer-bottom a {
+  .footer-copy a {
     color: var(--text-secondary);
+    text-decoration: none;
     transition: color var(--duration-fast);
   }
 
-  .footer-bottom a:hover { color: var(--accent); }
+  .footer-copy a:hover { color: var(--accent); }
 
-  .footer-version {
-    font-family: var(--font-mono);
+  .footer-made {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: var(--text-sm);
+    color: var(--text-dim);
   }
 
-  @media (max-width: 900px) {
-    .footer-inner {
-      grid-template-columns: 1fr;
-    }
-    .footer-links {
-      flex-wrap: wrap;
-      gap: var(--space-5);
-    }
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--success);
+    animation: footer-pulse 2s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes footer-pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.4; }
+  }
+
+  @media (max-width: 1024px) {
+    .footer-inner { grid-template-columns: 1fr 1fr; gap: var(--space-5); }
   }
 
   @media (max-width: 640px) {
-    .footer-links { gap: var(--space-4); }
-    .footer-col { min-width: 120px; }
+    .footer-inner { grid-template-columns: 1fr; gap: var(--space-4); }
+    .footer-bottom { flex-direction: column; align-items: flex-start; }
   }
 </style>

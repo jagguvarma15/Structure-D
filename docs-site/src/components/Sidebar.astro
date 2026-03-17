@@ -5,23 +5,16 @@ export interface Props {
 const { currentPath } = Astro.props;
 const base = import.meta.env.BASE_URL;
 
-interface NavItem {
-  label: string;
-  href: string;
-}
-
-interface NavGroup {
-  title: string;
-  items: NavItem[];
-}
+interface NavItem { label: string; href: string; }
+interface NavGroup { title: string; items: NavItem[]; }
 
 const nav: NavGroup[] = [
   {
     title: 'Getting Started',
     items: [
-      { label: 'Introduction',   href: `${base}docs/getting-started` },
-      { label: 'Installation',   href: `${base}docs/installation` },
-      { label: 'Configuration',  href: `${base}docs/configuration` },
+      { label: 'Introduction',  href: `${base}docs/getting-started` },
+      { label: 'Installation',  href: `${base}docs/installation` },
+      { label: 'Configuration', href: `${base}docs/configuration` },
     ],
   },
   {
@@ -33,12 +26,12 @@ const nav: NavGroup[] = [
     ],
   },
   {
-    title: 'API Reference',
+    title: 'AI Reference',
     items: [
-      { label: 'Overview',             href: `${base}docs/api/overview` },
-      { label: 'Core Pipeline',        href: `${base}docs/api/core` },
-      { label: 'Models & Providers',   href: `${base}docs/api/models` },
-      { label: 'Utilities',            href: `${base}docs/api/utilities` },
+      { label: 'Overview',           href: `${base}docs/api/overview` },
+      { label: 'Core Pipeline',      href: `${base}docs/api/core` },
+      { label: 'Models & Providers', href: `${base}docs/api/models` },
+      { label: 'Utilities',          href: `${base}docs/api/utilities` },
     ],
   },
 ];
@@ -50,7 +43,7 @@ function isActive(href: string) {
 
 <aside class="sidebar" id="sidebar" aria-label="Documentation navigation">
   <div class="sidebar-header">
-    <a href={`${base}docs/getting-started`} class="sidebar-home" aria-label="Docs home">
+    <a href={`${base}docs/getting-started`} class="sidebar-home">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
         <path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8z"/>
         <path d="M6.5 7.5a.5.5 0 0 1 1 0v3a.5.5 0 0 1-1 0v-3zM8 5a.75.75 0 1 1 0 1.5A.75.75 0 0 1 8 5z"/>
@@ -97,11 +90,9 @@ function isActive(href: string) {
   </nav>
 </aside>
 
-<!-- Mobile overlay backdrop -->
 <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
 
 <script>
-  // Collapsible groups
   document.querySelectorAll('.sidebar-group-title').forEach((btn) => {
     btn.addEventListener('click', () => {
       const isExpanded = btn.getAttribute('aria-expanded') === 'true';
@@ -114,19 +105,16 @@ function isActive(href: string) {
     });
   });
 
-  // Initialize heights
   document.querySelectorAll('.sidebar-group-items').forEach((list) => {
     list.style.maxHeight = list.scrollHeight + 'px';
     list.style.opacity = '1';
   });
 
-  // Search trigger
   document.getElementById('search-trigger')?.addEventListener('click', () => {
     document.getElementById('search-modal')?.classList.add('open');
     document.getElementById('search-input')?.focus();
   });
 
-  // Mobile sidebar
   const sidebar = document.getElementById('sidebar');
   const backdrop = document.getElementById('sidebar-backdrop');
 
@@ -135,7 +123,6 @@ function isActive(href: string) {
     backdrop?.classList.remove('visible');
   });
 
-  // Expose open function globally
   window.openSidebar = () => {
     if (sidebar) sidebar.classList.add('mobile-open');
     if (backdrop) backdrop.classList.add('visible');
@@ -150,20 +137,21 @@ function isActive(href: string) {
     top: var(--nav-height);
     height: calc(100vh - var(--nav-height));
     overflow-y: auto;
-    border-right: 1px solid var(--border-subtle);
-    background: var(--bg-primary);
+    border-right: 1px solid var(--border-default);
+    background: var(--bg-root);
     display: flex;
     flex-direction: column;
     padding-bottom: var(--space-5);
     scrollbar-width: thin;
+    scrollbar-color: var(--border-default) transparent;
   }
 
   .sidebar-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 20px 12px;
-    border-bottom: 1px solid var(--border-subtle);
+    padding: 14px 20px 12px;
+    border-bottom: 1px solid var(--border-default);
     flex-shrink: 0;
   }
 
@@ -184,15 +172,15 @@ function isActive(href: string) {
     font-family: var(--font-mono);
     font-size: 10px;
     color: var(--text-dim);
-    background: var(--bg-elevated);
+    background: var(--bg-secondary);
     padding: 2px 6px;
     border-radius: 4px;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--border-default);
   }
 
   .sidebar-search {
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border-subtle);
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-default);
     flex-shrink: 0;
   }
 
@@ -214,9 +202,8 @@ function isActive(href: string) {
   }
 
   .sidebar-search-btn:hover {
-    border-color: var(--border-bright);
+    border-color: var(--accent);
     color: var(--text-secondary);
-    background: var(--bg-elevated);
   }
 
   .sidebar-search-btn span { flex: 1; }
@@ -224,7 +211,7 @@ function isActive(href: string) {
   .sidebar-search-btn kbd {
     font-family: var(--font-mono);
     font-size: 10px;
-    background: var(--bg-elevated);
+    background: var(--bg-root);
     border: 1px solid var(--border-default);
     border-radius: 3px;
     padding: 1px 4px;
@@ -233,13 +220,11 @@ function isActive(href: string) {
 
   .sidebar-nav {
     flex: 1;
-    padding: 8px 0;
+    padding: 6px 0;
     overflow-y: auto;
   }
 
-  .sidebar-group {
-    padding: 4px 0;
-  }
+  .sidebar-group { padding: 2px 0; }
 
   .sidebar-group-title {
     display: flex;
@@ -274,7 +259,8 @@ function isActive(href: string) {
   .sidebar-group-items {
     list-style: none;
     overflow: hidden;
-    transition: max-height var(--duration-normal) var(--ease-in-out), opacity var(--duration-normal) var(--ease-in-out);
+    transition: max-height var(--duration-normal) var(--ease-in-out),
+                opacity var(--duration-normal) var(--ease-in-out);
   }
 
   .sidebar-link {
@@ -284,14 +270,12 @@ function isActive(href: string) {
     color: var(--text-secondary);
     text-decoration: none;
     border-left: 2px solid transparent;
-    border-radius: 0;
     transition: all var(--duration-fast) var(--ease-in-out);
-    position: relative;
   }
 
   .sidebar-link:hover {
     color: var(--text-primary);
-    background: var(--bg-elevated);
+    background: var(--bg-secondary);
     border-left-color: var(--border-bright);
   }
 
@@ -306,7 +290,7 @@ function isActive(href: string) {
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(8, 9, 13, 0.7);
+    background: rgba(15, 17, 23, 0.4);
     backdrop-filter: blur(4px);
     z-index: 49;
     opacity: 0;
@@ -325,13 +309,10 @@ function isActive(href: string) {
       transform: translateX(-100%);
       transition: transform var(--duration-normal) var(--ease-out-expo);
       border-right: 1px solid var(--border-default);
-      box-shadow: 8px 0 40px rgba(0, 0, 0, 0.5);
+      box-shadow: 4px 0 24px rgba(0,0,0,0.12);
     }
 
-    .sidebar.mobile-open {
-      transform: translateX(0);
-    }
-
+    .sidebar.mobile-open { transform: translateX(0); }
     .sidebar-backdrop { display: block; }
   }
 </style>
