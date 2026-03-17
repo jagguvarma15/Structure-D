@@ -2,8 +2,8 @@ import { defineConfig } from 'astro/config';
 import mdx from '@astrojs/mdx';
 
 export default defineConfig({
-  site: 'https://jagadeshvarma.github.io',
-  base: '/Structure-D',
+  site: 'https://jagguvarma15.github.io',
+  base: '/Structure-D/',
   integrations: [
     mdx(),
   ],
