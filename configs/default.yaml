@@ -118,7 +118,7 @@ storage:
   default_format: "jsonl"       # jsonl | csv | database
   output_directory: "./output"
   jsonl:
-    indent: null                # null = compact, 2 = pretty
+    indent: 2                   # null = compact, 2 = pretty (top-down indented)
   csv:
     delimiter: ","
     quoting: "minimal"

@@ -26,19 +26,20 @@ class JSONLWriter:
     def write(self, results: list[ExtractionResult], filename: str = "output.jsonl") -> Path:
         """Write *results* to a JSONL file and return the path."""
         path = self.output_dir / filename
+        sep = "\n\n" if self.indent is not None else "\n"
         with open(path, "a", encoding="utf-8") as f:
             for result in results:
-                line = self._serialise(result)
-                f.write(line + "\n")
+                f.write(self._serialise(result) + sep)
         logger.info("jsonl_written", path=str(path), count=len(results))
         return path
 
     def write_dicts(self, records: list[dict[str, Any]], filename: str = "output.jsonl") -> Path:
         """Write raw dicts to JSONL."""
         path = self.output_dir / filename
+        sep = "\n\n" if self.indent is not None else "\n"
         with open(path, "a", encoding="utf-8") as f:
             for record in records:
-                f.write(json.dumps(record, default=str, indent=self.indent) + "\n")
+                f.write(json.dumps(record, default=str, indent=self.indent) + sep)
         return path
 
     def _serialise(self, result: ExtractionResult) -> str:
