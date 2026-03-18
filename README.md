@@ -25,7 +25,7 @@ Structure-D is **format-focused** (PDF, images, HTML, Office, email, text) and *
 ### Install (library + CLI + common extras)
 
 ```bash
-git clone https://github.com/JagadeshVarma/Structure-D.git
+git clone https://github.com/jagguvarma15/Structure-D.git
 cd Structure-D
 make install          # builds Rust CLI and installs Python package with core extras
 ```
