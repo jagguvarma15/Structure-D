@@ -20,7 +20,6 @@ from structure_d.schemas.base import DocumentMetadata, ParsedDocument
 logger = structlog.get_logger(__name__)
 
 _SRT_TS = re.compile(r"\d{2}:\d{2}:\d{2}[.,]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[.,]\d{3}")
-_VTT_TS = _SRT_TS  # same pattern
 _SRT_INDEX = re.compile(r"^\d+$")
 
 

@@ -83,8 +83,3 @@ class CSVWriter:
         elif isinstance(data, list):
             items[prefix or "data"] = json.dumps(data, default=str)
         return items
-
-
-def save_as_csv(results: list[ExtractionResult], filename: str = "output.csv") -> Path:
-    """Convenience function."""
-    return CSVWriter().write(results, filename)

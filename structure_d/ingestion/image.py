@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import base64
 from pathlib import Path
-from typing import Any
 
 import structlog
 
@@ -57,45 +56,3 @@ class TesseractImageParser(BaseParser):
         )
 
 
-class EasyOCRImageParser(BaseParser):
-    """Extract text from images using EasyOCR."""
-
-    supported_extensions = IMAGE_EXTENSIONS
-
-    def __init__(self, languages: list[str] | None = None) -> None:
-        self.languages = languages or ["en"]
-        self._reader = None
-
-    def _get_reader(self) -> Any:
-        if self._reader is None:
-            import easyocr
-
-            self._reader = easyocr.Reader(self.languages)
-        return self._reader
-
-    async def parse(self, file_path: Path, **kwargs: object) -> ParsedDocument:
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, self._parse_sync, file_path)
-
-    def _parse_sync(self, file_path: Path) -> ParsedDocument:
-        reader = self._get_reader()
-        results = reader.readtext(str(file_path))
-        text = "\n".join(r[1] for r in results)
-
-        with open(file_path, "rb") as f:
-            b64 = base64.b64encode(f.read()).decode("utf-8")
-
-        metadata = DocumentMetadata(
-            filename=file_path.name,
-            source=str(file_path),
-            file_extension=file_path.suffix.lower(),
-            file_size_bytes=file_path.stat().st_size,
-            page_count=1,
-        )
-
-        return ParsedDocument(
-            metadata=metadata,
-            text=text,
-            pages=[text],
-            images=[b64],
-        )

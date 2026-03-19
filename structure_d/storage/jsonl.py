@@ -58,8 +58,3 @@ class JSONLWriter:
             "created_at": result.created_at.isoformat(),
         }
         return json.dumps(data, default=str, indent=self.indent)
-
-
-def save_as_jsonl(results: list[ExtractionResult], filename: str = "output.jsonl") -> Path:
-    """Convenience function."""
-    return JSONLWriter().write(results, filename)

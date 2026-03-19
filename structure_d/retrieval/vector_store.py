@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import abc
+import json
 from typing import Any
 
 import structlog
@@ -207,14 +208,11 @@ class PGVectorStore(VectorStoreBase):
         if metadatas is None:
             metadatas = [{}] * len(ids)
         
-        if len(ids) != len(embeddings) != len(documents) != len(metadatas):
+        if not (len(ids) == len(embeddings) == len(documents) == len(metadatas)):
             raise ValueError("ids, embeddings, documents, and metadatas must have the same length")
-        
-        import json
-        
+
         async with pool.acquire() as conn:
-            # Use executemany for batch insert
-            for i, doc_id, embedding, doc, meta in zip(range(len(ids)), ids, embeddings, documents, metadatas):
+            for doc_id, embedding, doc, meta in zip(ids, embeddings, documents, metadatas):
                 if len(embedding) != self.embedding_dimension:
                     raise ValueError(
                         f"Embedding dimension mismatch: expected {self.embedding_dimension}, "
