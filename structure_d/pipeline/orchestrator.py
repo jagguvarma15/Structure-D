@@ -7,6 +7,7 @@ validation → storage into a single async call.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from pathlib import Path
 from typing import Any, Literal, Type
@@ -356,8 +357,6 @@ class Pipeline:
         -------
         dict mapping each filename to its list of :class:`ExtractionResult`.
         """
-        import asyncio
-
         settings = get_settings()
         limit = max_concurrent or settings.inference.batch.max_concurrent_files
         semaphore = asyncio.Semaphore(limit)
