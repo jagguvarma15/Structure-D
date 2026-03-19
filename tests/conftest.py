@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any, Type
-from unittest.mock import AsyncMock
 
 import pytest
 from pydantic import BaseModel

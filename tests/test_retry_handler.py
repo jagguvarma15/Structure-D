@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from structure_d.exceptions import InferenceError
 from structure_d.inference.providers import BaseLLMProvider, ProviderResult
-from structure_d.schemas.base import DocumentFormat, ExtractionResult, TaskType
+from structure_d.schemas.base import ExtractionResult, TaskType
 from structure_d.schemas.generic import KeyValueExtraction, KeyValuePair
 from structure_d.validation.retry import RetryHandler
 from tests.conftest import FakeProvider
@@ -106,7 +106,7 @@ async def test_retry_exhausted_stays_invalid():
     assert "permanent failure" in out.validation_errors[0]
 
 
-async def test_retry_disabled_via_config(monkeypatch):
+async def test_retry_disabled_via_config():
     """When retry_with_refined_prompt is False, no retries should happen."""
     handler = RetryHandler(
         schema_cls=KeyValueExtraction,
