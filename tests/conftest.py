@@ -43,11 +43,37 @@ def sample_md_file(tmp_path: Path) -> Path:
 
 @pytest.fixture()
 def sample_html_file(tmp_path: Path) -> Path:
-    """A minimal HTML file for HTML parser tests."""
+    """A realistic HTML file for HTML parser tests (headings, table, list, meta, links)."""
     f = tmp_path / "sample.html"
     f.write_text(
-        "<html><head><title>Test</title></head>"
-        "<body><p>Hello World</p><script>var x=1;</script></body></html>"
+        """<!DOCTYPE html>
+<html>
+<head>
+  <title>Test Report</title>
+  <meta name="description" content="A test HTML document">
+  <meta name="author" content="Structure-D">
+  <meta property="og:title" content="Test OG Title">
+</head>
+<body>
+  <h1>Test Report</h1>
+  <h2>Introduction</h2>
+  <p>Hello World. This is a paragraph.</p>
+  <ul>
+    <li>Item one</li>
+    <li>Item two</li>
+  </ul>
+  <h2>Data</h2>
+  <table>
+    <thead><tr><th>Name</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td>vendor</td><td>Acme Corp</td></tr>
+      <tr><td>total</td><td>1240.00</td></tr>
+    </tbody>
+  </table>
+  <p>See <a href="https://example.com">example site</a> for details.</p>
+  <script>var x = 1;</script>
+</body>
+</html>"""
     )
     return f
 

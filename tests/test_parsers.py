@@ -58,23 +58,89 @@ async def test_plain_text_can_handle():
 # ── HTMLParser ───────────────────────────────────────────────────────────────
 
 
-async def test_html_parse(sample_html_file: Path):
-    """HTMLParser should extract visible text and strip scripts."""
+async def test_html_parse_text(sample_html_file: Path):
+    """HTMLParser should extract visible text and strip script content."""
     parser = HTMLParser(parser_lib="html.parser")
     doc = await parser.parse(sample_html_file)
 
+    assert isinstance(doc, ParsedDocument)
     assert "Hello World" in doc.text
-    assert "var x" not in doc.text  # script content removed
+    assert "var x" not in doc.text
     assert doc.metadata.file_extension == ".html"
-    assert doc.metadata.extra.get("title") == "Test"
+    assert doc.metadata.format == DocumentFormat.HTML
+    assert doc.metadata.file_size_bytes > 0
+
+
+async def test_html_parse_headings(sample_html_file: Path):
+    """HTMLParser should emit Markdown-style heading markers."""
+    parser = HTMLParser(parser_lib="html.parser")
+    doc = await parser.parse(sample_html_file)
+
+    assert "# Test Report" in doc.text
+    assert "## Introduction" in doc.text
+    assert "## Data" in doc.text
+
+
+async def test_html_parse_lists(sample_html_file: Path):
+    """HTMLParser should include list items prefixed with '- '."""
+    parser = HTMLParser(parser_lib="html.parser")
+    doc = await parser.parse(sample_html_file)
+
+    assert "- Item one" in doc.text
+    assert "- Item two" in doc.text
+
+
+async def test_html_parse_tables(sample_html_file: Path):
+    """HTMLParser should extract tables as indexed dicts with headers and data."""
+    parser = HTMLParser(parser_lib="html.parser")
+    doc = await parser.parse(sample_html_file)
+
+    assert len(doc.tables) == 1
+    tbl = doc.tables[0]
+    assert tbl["index"] == 0
+    assert tbl["headers"] == ["Name", "Value"]
+    assert ["vendor", "Acme Corp"] in tbl["data"]
+    assert ["total", "1240.00"] in tbl["data"]
+
+
+async def test_html_parse_meta(sample_html_file: Path):
+    """HTMLParser should collect <title> and <meta> tags into extra."""
+    parser = HTMLParser(parser_lib="html.parser")
+    doc = await parser.parse(sample_html_file)
+
+    extra = doc.metadata.extra
+    assert extra.get("title") == "Test Report"
+    assert extra.get("description") == "A test HTML document"
+    assert extra.get("author") == "Structure-D"
+    assert extra.get("og_title") == "Test OG Title"
+
+
+async def test_html_parse_links(sample_html_file: Path):
+    """HTMLParser should capture hyperlinks in extra['links']."""
+    parser = HTMLParser(parser_lib="html.parser")
+    doc = await parser.parse(sample_html_file)
+
+    links = doc.metadata.extra.get("links", [])
+    assert any(lnk["href"] == "https://example.com" for lnk in links)
+    assert any(lnk["text"] == "example site" for lnk in links)
+
+
+async def test_html_parse_sections(sample_html_file: Path):
+    """HTMLParser should split pages at H1/H2 boundaries."""
+    parser = HTMLParser(parser_lib="html.parser")
+    doc = await parser.parse(sample_html_file)
+
+    # Sample doc has 1×H1 + 2×H2 → at least 2 sections
+    assert len(doc.pages) >= 2
 
 
 async def test_html_can_handle():
-    """can_handle should return True for .html and .htm."""
+    """can_handle should return True for .html and .htm only."""
     parser = HTMLParser()
     assert parser.can_handle(Path("page.html")) is True
     assert parser.can_handle(Path("page.htm")) is True
     assert parser.can_handle(Path("page.txt")) is False
+    assert parser.can_handle(Path("page.pdf")) is False
 
 
 # ── EmailParser ──────────────────────────────────────────────────────────────
