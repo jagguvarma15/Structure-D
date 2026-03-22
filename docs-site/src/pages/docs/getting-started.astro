@@ -23,14 +23,22 @@ const toc = [
 >
   <h2 id="what-is-structure-d">What is Structure-D?</h2>
   <p>
-    <strong>Structure-D</strong> is a modular pipeline framework that converts unstructured documents
-    (PDFs, images, HTML, DOCX, and more) into <strong>validated, schema-constrained structured data</strong> using LLMs.
+    <strong>Structure-D</strong> is a document extraction framework built from the ground up for
+    <strong>high-throughput structured inference with <a href="https://github.com/vllm-project/vllm" target="_blank" rel="noopener">vLLM</a></strong>.
+    It ingests any document format and returns <strong>validated, schema-constrained structured data</strong>
+    guaranteed to match your Pydantic model — using vLLM's <code>guided_json</code> constrained decoding
+    to make invalid output physically impossible.
   </p>
-  <p>It is designed around three principles:</p>
+  <p>
+    When vLLM is not available, the same pipeline runs unchanged against <strong>OpenAI, Anthropic, Gemini, or Ollama</strong> — with zero code changes.
+    Cloud providers are first-class citizens for prototyping, fallback, and frontier-model use cases.
+  </p>
+  <p>It is designed around four principles:</p>
   <ul>
-    <li><strong>Format-focused, not domain-specific</strong> — Structure-D handles file formats, not document types. You define what you want to extract.</li>
-    <li><strong>Schema-driven</strong> — Your Pydantic model is the contract. Structure-D guarantees the output matches it.</li>
-    <li><strong>Async-first</strong> — Every I/O operation is <code>async</code>. Process thousands of documents in parallel.</li>
+    <li><strong>vLLM-first</strong> — PagedAttention + continuous batching + <code>guided_json</code> means hundreds of concurrent extractions on a single GPU with guaranteed schema conformance.</li>
+    <li><strong>Format-focused, not domain-specific</strong> — Structure-D handles file formats (PDF, DOCX, HTML, …), not document types. You define what you want to extract.</li>
+    <li><strong>Schema-driven</strong> — Your Pydantic model is the contract. Structure-D validates every output and retries automatically on failure.</li>
+    <li><strong>Async-first</strong> — Every I/O operation is <code>async</code>. Process thousands of documents in parallel without blocking.</li>
   </ul>
 
   <div class="callout info">
@@ -47,10 +55,23 @@ const toc = [
     <li><strong>Ingestion</strong> — a format-appropriate parser extracts raw text, tables, and images from your file</li>
     <li><strong>Preprocessing</strong> — text is normalized, cleaned, and chunked into optimal-size segments</li>
     <li><strong>Model Routing</strong> — the router selects the best registered model for your task and schema</li>
-    <li><strong>Inference</strong> — the LLM provider generates structured output constrained to your schema via <code>guided_json</code></li>
+    <li><strong>Inference</strong> — vLLM uses <code>guided_json</code> constrained decoding to guarantee schema-valid output; cloud providers (OpenAI, Anthropic, Gemini, Ollama) use structured output / function-calling APIs</li>
     <li><strong>Validation</strong> — every output is validated against the Pydantic model; invalid outputs trigger an automatic retry with a refined prompt</li>
-    <li><strong>Storage</strong> — results are written to JSONL, CSV, or a database destination</li>
+    <li><strong>Storage</strong> — results are written to JSONL, CSV, Markdown, or a database destination</li>
   </ol>
+
+  <div class="callout tip">
+    <span class="callout-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zM0 6a8 8 0 1 1 16 0A8 8 0 0 1 0 6zm8 4a.5.5 0 0 1 .5.5v1.5a.5.5 0 0 1-1 0V10.5A.5.5 0 0 1 8 10zm0-9.5a.5.5 0 0 1 .5.5V3a.5.5 0 0 1-1 0V1a.5.5 0 0 1 .5-.5z"/></svg></span>
+    <div class="callout-body">
+      <p class="callout-title">vLLM is the primary inference engine</p>
+      <p class="callout-content">
+        Structure-D is optimised for self-hosted vLLM. <code>guided_json</code> constrains token sampling directly to your
+        JSON schema — the model physically cannot produce invalid output, so validation passes on the first attempt in almost
+        all cases. Cloud providers (OpenAI, Anthropic, Gemini, Ollama) are fully supported as drop-in alternatives for
+        prototyping or environments without a GPU server.
+      </p>
+    </div>
+  </div>
 
   <div class="pipeline-diagram">
     <div class="pd-step">
@@ -107,7 +128,7 @@ const toc = [
 from pathlib import Path
 from pydantic import BaseModel
 from structure_d.pipeline import Pipeline
-from structure_d.inference.providers import OpenAIProvider
+from structure_d.inference.providers import VLLMProvider  # primary engine
 
 # 1. Define your extraction schema as a Pydantic model
 class Invoice(BaseModel):
@@ -117,14 +138,15 @@ class Invoice(BaseModel):
     line_items: list[str]
     due_date: str | None = None
 
-# 2. Create the pipeline
+# 2. Create the pipeline — VLLMProvider uses guided_json for guaranteed schema conformance
 async def main():
     pipeline = Pipeline(
         schema_cls=Invoice,
-        provider=OpenAIProvider(),   # or AnthropicProvider(), OllamaProvider(), VLLMProvider()
+        provider=VLLMProvider(),     # default: http://localhost:8000/v1
+        # provider=AnthropicProvider()  # swap in any cloud provider with no other changes
     )
 
-    # 3. Run on a file — format is auto-detected
+    # 3. Run on a file — format is auto-detected (PDF, DOCX, HTML, images, ...)
     results = await pipeline.run(Path("invoice.pdf"))
 
     for result in results:
@@ -135,9 +157,9 @@ asyncio.run(main())</code></pre>
   </div>
 
   <p>
-    Structure-D automatically detects the file format, selects the appropriate parser,
-    chunks the content, runs inference, and validates the output — retrying up to 3 times
-    if the model produces invalid JSON.
+    Structure-D automatically detects the file format, selects the appropriate parser, chunks the content,
+    runs inference with constrained decoding (<code>guided_json</code> on vLLM, structured output on cloud
+    providers), and validates the result — retrying up to 3 times with a refined prompt on failure.
   </p>
 
   <div class="callout tip">
@@ -235,14 +257,16 @@ class Contract(BaseModel):
         </tr>
       </thead>
       <tbody>
-        <tr><td><code>.pdf</code></td><td><code>pymupdf</code></td><td>Text, tables, images (per page)</td></tr>
+        <tr><td><code>.pdf</code></td><td><code>pymupdf</code></td><td>Per-page text, page count</td></tr>
+        <tr><td><code>.pdf</code> (with tables)</td><td><code>pdfplumber</code></td><td>Text + structured table data</td></tr>
         <tr><td><code>.pdf</code> (scanned)</td><td><code>ocr_pdf</code></td><td>OCR text via Tesseract</td></tr>
-        <tr><td><code>.png</code>, <code>.jpg</code></td><td><code>tesseract_image</code></td><td>OCR text from images</td></tr>
-        <tr><td><code>.html</code>, <code>.htm</code></td><td><code>html</code></td><td>Main content, tables, links</td></tr>
-        <tr><td><code>.docx</code></td><td><code>docx</code></td><td>Paragraphs, tables, styles</td></tr>
-        <tr><td><code>.xlsx</code></td><td><code>xlsx</code></td><td>Sheet data, cell values</td></tr>
-        <tr><td><code>.pptx</code></td><td><code>pptx</code></td><td>Slide text, notes</td></tr>
-        <tr><td><code>.eml</code>, <code>.msg</code></td><td><code>email</code></td><td>Subject, body, headers, attachments</td></tr>
+        <tr><td><code>.png</code>, <code>.jpg</code>, <code>.tiff</code></td><td><code>tesseract_image</code></td><td>OCR text + base64 image for multimodal</td></tr>
+        <tr><td><code>.html</code>, <code>.htm</code></td><td><code>html</code></td><td>Structured text (headings, lists), tables, meta tags, links, section pages</td></tr>
+        <tr><td><code>.docx</code></td><td><code>docx</code></td><td>Heading-prefixed paragraphs, tables, core properties (author, title, dates), page count</td></tr>
+        <tr><td><code>.xlsx</code></td><td><code>xlsx</code></td><td>Per-sheet table data, cell values</td></tr>
+        <tr><td><code>.pptx</code></td><td><code>pptx</code></td><td>Per-slide text and notes</td></tr>
+        <tr><td><code>.eml</code></td><td><code>email</code></td><td>Subject, body, headers</td></tr>
+        <tr><td><code>.srt</code>, <code>.vtt</code></td><td><code>transcript</code></td><td>Cleaned transcript text (timestamps stripped)</td></tr>
         <tr><td><code>.txt</code>, <code>.md</code></td><td><code>plaintext</code></td><td>Raw text</td></tr>
         <tr><td><code>.csv</code></td><td><code>plaintext</code></td><td>Raw text (structured CSV rows)</td></tr>
       </tbody>

@@ -16,7 +16,7 @@ const toc = [
 
 <DocsLayout
   title="Basic Usage"
-  description="Extract structured data from PDFs, images, HTML, and Office documents."
+  description="Extract structured data from PDFs, DOCX, HTML, images, and more. Save as JSONL, CSV, or Markdown."
   toc={toc}
   editPath="/docs/guides/basic-usage.astro"
   prev={{ label: 'Configuration', href: `${base}docs/configuration` }}
@@ -154,26 +154,54 @@ for filename, file_results in results.items():
   </div>
 
   <h2 id="saving-output">Saving output</h2>
-  <p>Pass <code>save_format</code> to automatically write results after extraction:</p>
+  <p>Pass <code>save_format</code> to automatically write results after extraction. Three formats are supported:</p>
+
+  <div class="prose-table-wrapper">
+    <table class="prose-table">
+      <thead>
+        <tr><th>Value</th><th>Output</th><th>Use when</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>"jsonl"</code></td><td>Pretty-printed JSON objects, one per chunk, blank-line separated</td><td>Pipelines, downstream processing</td></tr>
+        <tr><td><code>"csv"</code></td><td>One row per result; <code>structured_output</code> flattened to dot-notation columns</td><td>Spreadsheets, BI tools</td></tr>
+        <tr><td><code>"markdown"</code></td><td>Human-readable <code>.md</code> — <code>## Result N</code> with metadata table + fenced JSON</td><td>Human review, Git-tracked output</td></tr>
+      </tbody>
+    </table>
+  </div>
 
   <div class="code-block-wrapper">
     <div class="code-block-header">
       <span class="code-block-lang">python</span>
       <button class="code-block-copy">Copy</button>
     </div>
-    <pre><code class="language-python"># Save to JSONL
+    <pre><code class="language-python"># Auto-save to JSONL (default)
 results = await pipeline.run(
     Path("report.pdf"),
     save_format="jsonl",
-    output_filename="report_extracted.jsonl",
+    output_filename="report_extracted",   # .jsonl appended automatically
 )
 
-# Or manually using storage writers
+# Save as Markdown for human review
+results = await pipeline.run(
+    Path("invoice.docx"),
+    save_format="markdown",
+    output_filename="invoice_extracted",  # .md appended automatically
+)
+
+# Save as CSV for spreadsheet import
+results = await pipeline.run(
+    Path("data.html"),
+    save_format="csv",
+)
+
+# Or write manually using the storage writers
 from structure_d.storage.jsonl import JSONLWriter
 from structure_d.storage.csv_store import CSVWriter
+from structure_d.storage.markdown import MarkdownWriter
 
-writer = JSONLWriter(output_dir=Path("output/"))
-path = writer.write(results, filename="output.jsonl")</code></pre>
+JSONLWriter(output_dir=Path("output/")).write(results, "output.jsonl")
+CSVWriter(output_dir=Path("output/")).write(results, "output.csv")
+MarkdownWriter(output_dir=Path("output/")).write(results, "output.md")</code></pre>
   </div>
 
   <h2 id="choosing-parser">Choosing a parser</h2>

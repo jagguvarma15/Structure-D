@@ -21,10 +21,10 @@ const features = [
     description: 'Define any Pydantic model as your extraction target. Built-in schemas for key-value, table, entity, form, classification, and summary.',
   },
   {
-    title: 'Multi-Provider LLMs',
+    title: 'vLLM-First Inference',
     color: '#d97706',
     bg: 'rgba(217, 119, 6, 0.08)',
-    description: 'vLLM, OpenAI, Anthropic, Gemini, and Ollama — all behind one interface. Automatic fallback chains and constrained decoding.',
+    description: 'Built for vLLM — guided_json constrained decoding makes invalid output impossible. OpenAI, Anthropic, Gemini, and Ollama as drop-in alternatives.',
   },
   {
     title: 'RAG & Vector Indexing',
@@ -83,7 +83,7 @@ const pillars = [
     description: 'Full API reference for the Pipeline, all LLM providers, schemas, validators, and storage writers. Typed signatures and live examples.',
     link: `${base}docs/api/overview`,
     cta: 'Explore the API',
-    items: ['Core Pipeline', 'OpenAI / Anthropic / Gemini', 'vLLM + guided_json', 'Model Registry & Router', 'Schemas & Validators'],
+    items: ['Core Pipeline', 'vLLM + guided_json (primary)', 'OpenAI / Anthropic / Gemini / Ollama', 'Model Registry & Router', 'Schemas & Validators'],
   },
   {
     label: 'Changelog',
@@ -121,9 +121,9 @@ const pillars = [
       </h1>
 
       <p class="hero-sub reveal" style="transition-delay:160ms">
-        Structure-D ingests PDFs, images, HTML, and 11 other formats then uses
-        LLM structured outputs to extract validated, schema-constrained JSON.
-        Async-first. Provider-agnostic. Zero invalid output.
+        Built for vLLM. Structure-D ingests PDFs, DOCX, HTML, images, and 11 other formats
+        and uses <code>guided_json</code> constrained decoding to guarantee schema-valid output at scale.
+        Drop-in support for OpenAI, Anthropic, Gemini, and Ollama when a GPU is not available.
       </p>
 
       <div class="hero-cta reveal" style="transition-delay:240ms">
@@ -239,8 +239,8 @@ const pillars = [
               <path d="M5 0a.5.5 0 0 1 .5.5V2h1V.5a.5.5 0 0 1 1 0V2h1V.5a.5.5 0 0 1 1 0V2h1V.5a.5.5 0 0 1 1 0V2A2.5 2.5 0 0 1 14 4.5V6a1 1 0 0 1-1 1v4.5a2.5 2.5 0 0 1-5 0V7a1 1 0 0 1-1-1V4.5A2.5 2.5 0 0 1 4.5 2V.5A.5.5 0 0 1 5 0z"/>
             </svg>
           </div>
-          <h3 class="feature-title">Multi-Provider LLMs</h3>
-          <p class="feature-desc">vLLM, OpenAI, Anthropic, Gemini, and Ollama — all behind one interface. Automatic fallback chains and constrained decoding.</p>
+          <h3 class="feature-title">vLLM-First Inference</h3>
+          <p class="feature-desc">Built for vLLM — <code>guided_json</code> constrained decoding guarantees schema-valid output at high throughput. OpenAI, Anthropic, Gemini, and Ollama available as drop-in alternatives.</p>
         </div>
 
         <div class="feature-card reveal" style="transition-delay:0ms">

@@ -10,7 +10,7 @@ const toc = [
   { text: 'Ingestion & parsing', id: 'ingestion', depth: 2 },
   { text: 'Preprocessing', id: 'preprocessing', depth: 2 },
   { text: 'Validation & retry', id: 'validation', depth: 2 },
-  { text: 'Storage', id: 'storage', depth: 2 },
+  { text: 'Storage & output formats', id: 'storage', depth: 2 },
   { text: 'Full reference', id: 'full-reference', depth: 2 },
 ];
 ---
@@ -73,12 +73,45 @@ settings = load_settings("configs/production.yaml")</code></pre>
         <tr><td><code>SD_INFERENCE__PROVIDER__PROVIDER</code></td><td><code>inference.provider.provider</code></td><td><code>openai</code></td></tr>
         <tr><td><code>SD_INFERENCE__PROVIDER__VLLM__API_BASE</code></td><td><code>inference.provider.vllm.api_base</code></td><td><code>http://localhost:8000</code></td></tr>
         <tr><td><code>SD_VALIDATION__MAX_RETRIES</code></td><td><code>validation.max_retries</code></td><td><code>5</code></td></tr>
-        <tr><td><code>SD_STORAGE__DEFAULT_FORMAT</code></td><td><code>storage.default_format</code></td><td><code>csv</code></td></tr>
+        <tr><td><code>SD_STORAGE__DEFAULT_FORMAT</code></td><td><code>storage.default_format</code></td><td><code>csv</code>, <code>markdown</code></td></tr>
       </tbody>
     </table>
   </div>
 
   <h2 id="inference">Inference providers</h2>
+
+  <p>
+    Structure-D is built for <strong><a href="https://github.com/vllm-project/vllm" target="_blank" rel="noopener">vLLM</a></strong>
+    as its primary and recommended inference engine. vLLM's <code>guided_json</code> constrained decoding makes it
+    physically impossible for the model to return output that does not match your schema, eliminating validation failures
+    at the source. Its PagedAttention architecture and continuous batching allow hundreds of concurrent extractions on a
+    single GPU.
+  </p>
+  <p>
+    All other providers (OpenAI, Anthropic, Gemini, Ollama) are <strong>fully supported drop-in alternatives</strong> —
+    useful for prototyping, cloud-only environments, or when a frontier model's reasoning is more important than throughput.
+    They share the same <code>BaseLLMProvider</code> interface and the same validation and retry logic.
+  </p>
+
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Provider</th>
+          <th>Config key</th>
+          <th>Structured output method</th>
+          <th>Best for</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>vLLM</strong> <em>(default)</em></td><td><code>vllm</code></td><td><code>guided_json</code> constrained decoding</td><td>Production, high-throughput, self-hosted GPU</td></tr>
+        <tr><td>OpenAI</td><td><code>openai</code></td><td><code>response_format: json_schema</code></td><td>Cloud, GPT-4o, Azure OpenAI</td></tr>
+        <tr><td>Anthropic</td><td><code>anthropic</code></td><td>Tool-use structured output</td><td>Cloud, Claude 3.5</td></tr>
+        <tr><td>Gemini</td><td><code>gemini</code></td><td>Structured generation</td><td>Cloud, Google ecosystem</td></tr>
+        <tr><td>Ollama</td><td><code>ollama</code></td><td>JSON mode</td><td>Local dev, no GPU server required</td></tr>
+      </tbody>
+    </table>
+  </div>
 
   <div class="code-block-wrapper">
     <div class="code-block-header">
@@ -88,7 +121,7 @@ settings = load_settings("configs/production.yaml")</code></pre>
     </div>
     <pre><code class="language-yaml">inference:
   provider:
-    provider: "vllm"                  # vllm | openai | anthropic | gemini | ollama
+    provider: "vllm"                  # PRIMARY — vllm | openai | anthropic | gemini | ollama
     fallback_provider: "anthropic"    # fallback on InferenceError (optional)
 
     vllm:
@@ -216,7 +249,7 @@ settings = load_settings("configs/production.yaml")</code></pre>
     improving recovery rates on subsequent attempts.
   </p>
 
-  <h2 id="storage">Storage</h2>
+  <h2 id="storage">Storage &amp; output formats</h2>
 
   <div class="code-block-wrapper">
     <div class="code-block-header">
@@ -224,16 +257,56 @@ settings = load_settings("configs/production.yaml")</code></pre>
       <button class="code-block-copy">Copy</button>
     </div>
     <pre><code class="language-yaml">storage:
-  default_format: "jsonl"     # jsonl | csv | database
-  output_dir: "output/"
+  default_format: "jsonl"     # jsonl | csv | markdown | database
+  output_directory: "./output"
+
+  jsonl:
+    indent: 2                 # null = compact single-line, 2 = pretty-printed
+
+  csv:
+    delimiter: ","
+    quoting: "minimal"
+
+  markdown:
+    enabled: true             # human-readable .md output — one ## section per result
 
   database:
-    url: null                 # e.g. "postgresql+asyncpg://user:pass@host/db"
-    table: "extractions"
+    connection_string: null   # e.g. "postgresql+asyncpg://user:pass@host/db"
+    table_prefix: "sd_"</code></pre>
+  </div>
 
-  # Cloud destinations (optional)
-  destination:
-    type: null                # snowflake | bigquery | mysql | redshift</code></pre>
+  <div class="prose-table-wrapper">
+    <table class="prose-table">
+      <thead>
+        <tr>
+          <th>Format</th>
+          <th>File extension</th>
+          <th>Best for</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>jsonl</code></td>
+          <td><code>.jsonl</code></td>
+          <td>Pipelines, log ingestion, re-processing. Pretty-printed by default (<code>indent: 2</code>).</td>
+        </tr>
+        <tr>
+          <td><code>csv</code></td>
+          <td><code>.csv</code></td>
+          <td>Spreadsheets, BI tools. <code>structured_output</code> fields flattened to dot-notation columns.</td>
+        </tr>
+        <tr>
+          <td><code>markdown</code></td>
+          <td><code>.md</code></td>
+          <td>Human review, docs-as-data, Git diffs. Each result rendered as <code>## Result N</code> with a metadata table and fenced JSON block.</td>
+        </tr>
+        <tr>
+          <td><code>database</code></td>
+          <td>—</td>
+          <td>PostgreSQL via asyncpg. Requires <code>pip install "structure-d[storage]"</code>.</td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 
   <h2 id="full-reference">Full reference</h2>
