@@ -365,6 +365,19 @@ fn print_welcome() {
     );
 }
 
+/// Shows which `structure-d` binary is running (stdout) so it’s obvious when the shell’s PATH
+/// points at an older install instead of `./target/release/structure-d` from this repo.
+fn print_running_exe_line() {
+    match std::env::current_exe() {
+        Ok(p) => println!(
+            "  {} {}\n",
+            "Executable:".dimmed(),
+            p.display().to_string().bright_white()
+        ),
+        Err(_) => println!("  {}\n", "(could not resolve current executable path)".dimmed()),
+    }
+}
+
 // ── Help text ─────────────────────────────────────────────────────────────────
 
 fn print_help() {
@@ -410,6 +423,21 @@ fn print_help() {
     for (opt, desc) in opts {
         println!("    {:25} {}", opt.dimmed(), desc.dimmed());
     }
+
+    println!(
+        "\n  {}",
+        "Troubleshooting upload:".bold()
+    );
+    println!(
+        "    If {} shows {} / {} arrow menus with only two formats, you are not running this repo’s binary.",
+        "upload".bright_green(),
+        "? … ›".dimmed(),
+        "❯".green()
+    );
+    println!(
+        "    Build from the repo root, then run the local binary explicitly:\n    {}",
+        "cargo build --release && ./target/release/structure-d".bright_cyan()
+    );
     println!();
 }
 
@@ -424,6 +452,62 @@ fn make_output_path(file: &std::path::Path, schema: &str, fmt: &str) -> std::pat
     let out_dir = std::env::current_dir().unwrap_or_default().join("data").join("output");
     let _ = std::fs::create_dir_all(&out_dir);
     out_dir.join(name)
+}
+
+/// Built-in schema choice for interactive upload/batch.
+///
+/// Avoids [`dialoguer::Select`]: it sizes the visible window from **terminal row count**, so in
+/// a short integrated terminal only ~two options appear at once and the rest look “missing”.
+///
+/// Uses the same [`DefaultEditor`] as the REPL: `std::io::stdin().read_line` fights with
+/// rustyline’s TTY handling, so sub-prompts can swallow input or never show `md` as selectable.
+fn prompt_builtin_schema_interactive(rl: &mut DefaultEditor) -> Option<&'static str> {
+    let names = crate::schemas::SCHEMA_NAMES;
+    println!();
+    println!("  {}", "Schema (built-in)".bold());
+    for (i, name) in names.iter().enumerate() {
+        println!("    {:>2}  {}", i + 1, name);
+    }
+    let prompt = format!("  Enter 1-{} [default: 1]: ", names.len());
+    let line = rl.readline(&prompt).ok()?;
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return Some(names[0]);
+    }
+    let n: usize = trimmed.parse().ok()?;
+    if !(1..=names.len()).contains(&n) {
+        return None;
+    }
+    Some(names[n - 1])
+}
+
+/// `--output-format` for interactive upload/batch (`jsonl` | `csv` | `md`).
+///
+/// Same rationale as [`prompt_builtin_schema_interactive`]: no `Select`, so all three choices
+/// are always listed. The CLI flag value remains `md` (not `markdown`).
+fn prompt_output_format_interactive(rl: &mut DefaultEditor) -> Option<&'static str> {
+    const VALUES: &[&str] = &["jsonl", "csv", "md"];
+    println!();
+    println!("  {}", "Output format".bold());
+    // One line lists all three so a narrow or folded view still mentions Markdown.
+    println!(
+        "  {}",
+        "1=jsonl  ·  2=csv  ·  3=md (Markdown)"
+            .dimmed()
+    );
+    println!("     1  JSON Lines (.jsonl)");
+    println!("     2  CSV (.csv)");
+    println!("     3  Markdown (.md)");
+    let line = rl.readline("  Enter 1-3 [default: 1]: ").ok()?;
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return Some(VALUES[0]);
+    }
+    let n: usize = trimmed.parse().ok()?;
+    if !(1..=3).contains(&n) {
+        return None;
+    }
+    Some(VALUES[n - 1])
 }
 
 /// Mask an API key for safe display: `sk-ant-...abcd`
@@ -761,10 +845,7 @@ fn open_file_dialog() -> Option<std::path::PathBuf> {
 }
 
 /// Native file dialog → schema → format → run extract.
-fn pick_and_run_upload() {
-    use dialoguer::{theme::ColorfulTheme, Select};
-    let theme = ColorfulTheme::default();
-
+fn pick_and_run_upload(rl: &mut DefaultEditor) {
     println!("\n  {} Opening file picker…\n", "↑".bright_cyan());
 
     let file_path = match open_file_dialog() {
@@ -775,31 +856,13 @@ fn pick_and_run_upload() {
         }
     };
 
-    // Step 2 — schema
-    let schemas: Vec<&str> = crate::schemas::SCHEMA_NAMES.to_vec();
-    let si = match Select::with_theme(&theme)
-        .with_prompt("  Schema")
-        .items(&schemas)
-        .default(0)
-        .interact_opt()
-    {
-        Ok(Some(i)) => i,
-        _ => return,
+    let Some(schema) = prompt_builtin_schema_interactive(rl) else {
+        return;
     };
-    let schema = schemas[si];
 
-    // Step 3 — output format
-    let formats = ["jsonl", "csv", "md"];
-    let fi2 = match Select::with_theme(&theme)
-        .with_prompt("  Output format")
-        .items(&formats)
-        .default(0)
-        .interact_opt()
-    {
-        Ok(Some(i)) => i,
-        _ => return,
+    let Some(fmt) = prompt_output_format_interactive(rl) else {
+        return;
     };
-    let fmt = formats[fi2];
 
     let output = make_output_path(&file_path, schema, fmt);
 
@@ -841,7 +904,7 @@ fn pick_and_run_upload() {
     println!();
 }
 
-fn pick_and_run_batch() {
+fn pick_and_run_batch(rl: &mut DefaultEditor) {
     use dialoguer::{theme::ColorfulTheme, Select};
     let theme = ColorfulTheme::default();
     let cwd = std::env::current_dir().unwrap_or_default();
@@ -882,29 +945,13 @@ fn pick_and_run_batch() {
         dirs[di].clone()
     };
 
-    let schemas: Vec<&str> = crate::schemas::SCHEMA_NAMES.to_vec();
-    let si = match Select::with_theme(&theme)
-        .with_prompt("  Schema")
-        .items(&schemas)
-        .default(0)
-        .interact_opt()
-    {
-        Ok(Some(i)) => i,
-        _ => return,
+    let Some(schema) = prompt_builtin_schema_interactive(rl) else {
+        return;
     };
-    let schema = schemas[si];
 
-    let formats = ["jsonl", "csv", "md"];
-    let fi = match Select::with_theme(&theme)
-        .with_prompt("  Output format")
-        .items(&formats)
-        .default(0)
-        .interact_opt()
-    {
-        Ok(Some(i)) => i,
-        _ => return,
+    let Some(fmt) = prompt_output_format_interactive(rl) else {
+        return;
     };
-    let fmt = formats[fi];
 
     println!(
         "\n  {} batch {}  --schema {}  --output-format {}\n",
@@ -932,7 +979,7 @@ enum DispatchResult {
     Reload,
 }
 
-fn dispatch(input: &str, settings: &crate::config::Settings) -> DispatchResult {
+fn dispatch(input: &str, settings: &crate::config::Settings, rl: &mut DefaultEditor) -> DispatchResult {
     let mut parts = input.splitn(2, ' ');
     let cmd = parts.next().unwrap_or("").to_lowercase();
     let rest = parts.next().unwrap_or("").trim();
@@ -1000,14 +1047,14 @@ fn dispatch(input: &str, settings: &crate::config::Settings) -> DispatchResult {
             }
         }
         // ── upload / configure / extract / batch ─────────────────────────────
-        "upload" | "u" => pick_and_run_upload(),
+        "upload" | "u" => pick_and_run_upload(rl),
         "configure" | "config set" => {
             configure_provider();
             return DispatchResult::Reload;
         }
         "extract" => {
             if rest.is_empty() {
-                pick_and_run_upload();
+                pick_and_run_upload(rl);
             } else {
                 let exe = std::env::current_exe()
                     .unwrap_or_else(|_| std::path::PathBuf::from("structure-d"));
@@ -1020,7 +1067,7 @@ fn dispatch(input: &str, settings: &crate::config::Settings) -> DispatchResult {
         }
         "batch" => {
             if rest.is_empty() {
-                pick_and_run_batch();
+                pick_and_run_batch(rl);
             } else {
                 let exe = std::env::current_exe()
                     .unwrap_or_else(|_| std::path::PathBuf::from("structure-d"));
@@ -1053,6 +1100,7 @@ pub fn run_interactive() -> Result<()> {
     print_init();
     print_ready(&settings);
     print_welcome();
+    print_running_exe_line();
 
     let mut rl = DefaultEditor::new()?;
 
@@ -1070,7 +1118,7 @@ pub fn run_interactive() -> Result<()> {
                 if !line.is_empty() {
                     let _ = rl.add_history_entry(&line);
                 }
-                match dispatch(&line, &settings) {
+                match dispatch(&line, &settings, &mut rl) {
                     DispatchResult::Exit => break,
                     DispatchResult::Reload => {
                         // Re-read the config file and redisplay the status panel
