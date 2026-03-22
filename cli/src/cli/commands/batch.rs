@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use crate::config::Settings;
 use crate::pipeline::Pipeline;
 use crate::schemas::resolve_schema;
-use crate::storage::{csv_store, jsonl};
+use crate::storage::{csv_store, jsonl, markdown};
 
 #[derive(Args, Debug)]
 pub struct BatchArgs {
@@ -30,12 +30,12 @@ pub struct BatchArgs {
     #[arg(short, long, default_value = "generic")]
     pub schema: String,
 
-    /// Output format: jsonl or csv
+    /// Output format: jsonl, csv, or md
     #[arg(
         short = 'f',
         long,
         default_value = "jsonl",
-        value_parser = clap::builder::PossibleValuesParser::new(["jsonl", "csv"])
+        value_parser = clap::builder::PossibleValuesParser::new(["jsonl", "csv", "md"])
     )]
     pub output_format: String,
 
@@ -126,6 +126,13 @@ pub async fn run(args: BatchArgs, mut config: Settings) -> Result<()> {
                 .output
                 .unwrap_or_else(|| PathBuf::from("output/batch_results.csv"));
             csv_store::save_as_csv(&all_results, &path.display().to_string())?;
+            println!("{} → {}", "Saved".bright_green(), path.display());
+        }
+        "md" => {
+            let path = args
+                .output
+                .unwrap_or_else(|| PathBuf::from("output/batch_results.md"));
+            markdown::save_as_markdown(&all_results, &path.display().to_string())?;
             println!("{} → {}", "Saved".bright_green(), path.display());
         }
         _ => unreachable!(),

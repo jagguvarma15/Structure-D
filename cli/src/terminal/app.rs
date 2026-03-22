@@ -404,7 +404,7 @@ fn print_help() {
         ("--schema <name>", "generic, key_value, table, entity, form, classification, summary, document_structure"),
         ("--task <type>",   "extraction, classification, summarisation, sentiment"),
         ("--model <name>",  "Model alias (default: auto-route)"),
-        ("--output-format <fmt>",  "jsonl or csv (default: jsonl)"),
+        ("--output-format <fmt>",  "jsonl, csv, or md (default: jsonl)"),
         ("--output <dir>",  "Output directory"),
     ];
     for (opt, desc) in opts {
@@ -789,7 +789,7 @@ fn pick_and_run_upload() {
     let schema = schemas[si];
 
     // Step 3 — output format
-    let formats = ["jsonl", "csv"];
+    let formats = ["jsonl", "csv", "md"];
     let fi2 = match Select::with_theme(&theme)
         .with_prompt("  Output format")
         .items(&formats)
@@ -894,7 +894,7 @@ fn pick_and_run_batch() {
     };
     let schema = schemas[si];
 
-    let formats = ["jsonl", "csv"];
+    let formats = ["jsonl", "csv", "md"];
     let fi = match Select::with_theme(&theme)
         .with_prompt("  Output format")
         .items(&formats)
