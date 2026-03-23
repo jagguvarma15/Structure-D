@@ -80,7 +80,7 @@ class Pipeline:
     3. **Route** – (vLLM only) select the best model for the task.
     4. **Infer** – send chunks to the provider in batches.
     5. **Validate** – check outputs; retry on error.
-    6. **Store** – write results to JSONL / CSV / database.
+    6. **Store** – write results to JSONL / CSV / Markdown / Parquet / database.
     """
 
     def __init__(
