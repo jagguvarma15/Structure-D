@@ -216,7 +216,7 @@ class DatabaseConfig(BaseModel):
 
 
 class StorageConfig(BaseModel):
-    default_format: Literal["jsonl", "csv", "markdown", "database"] = "jsonl"
+    default_format: Literal["jsonl", "csv", "markdown", "parquet", "database"] = "jsonl"
     output_directory: str = "./output"
     jsonl: JSONLConfig = Field(default_factory=JSONLConfig)
     csv: CSVConfig = Field(default_factory=CSVConfig)

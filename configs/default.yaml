@@ -115,7 +115,7 @@ retrieval:
 
 # ── Storage ──────────────────────────────────────────────────
 storage:
-  default_format: "jsonl"       # jsonl | csv | database
+  default_format: "jsonl"       # jsonl | csv | markdown | parquet | database
   output_directory: "./output"
   jsonl:
     indent: 2                   # null = compact, 2 = pretty (top-down indented)

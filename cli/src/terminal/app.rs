@@ -417,7 +417,7 @@ fn print_help() {
         ("--schema <name>", "generic, key_value, table, entity, form, classification, summary, document_structure"),
         ("--task <type>",   "extraction, classification, summarisation, sentiment"),
         ("--model <name>",  "Model alias (default: auto-route)"),
-        ("--output-format <fmt>",  "jsonl, csv, or md (default: jsonl)"),
+        ("--output-format <fmt>",  "jsonl, csv, md, or parquet (default: jsonl)"),
         ("--output <dir>",  "Output directory"),
     ];
     for (opt, desc) in opts {
@@ -481,30 +481,30 @@ fn prompt_builtin_schema_interactive(rl: &mut DefaultEditor) -> Option<&'static 
     Some(names[n - 1])
 }
 
-/// `--output-format` for interactive upload/batch (`jsonl` | `csv` | `md`).
+/// `--output-format` for interactive upload/batch (`jsonl` | `csv` | `md` | `parquet`).
 ///
-/// Same rationale as [`prompt_builtin_schema_interactive`]: no `Select`, so all three choices
-/// are always listed. The CLI flag value remains `md` (not `markdown`).
+/// Same rationale as [`prompt_builtin_schema_interactive`]: no `Select`, so every choice is
+/// listed. The CLI flag value remains `md` (not `markdown`).
 fn prompt_output_format_interactive(rl: &mut DefaultEditor) -> Option<&'static str> {
-    const VALUES: &[&str] = &["jsonl", "csv", "md"];
+    const VALUES: &[&str] = &["jsonl", "csv", "md", "parquet"];
     println!();
     println!("  {}", "Output format".bold());
-    // One line lists all three so a narrow or folded view still mentions Markdown.
     println!(
         "  {}",
-        "1=jsonl  ·  2=csv  ·  3=md (Markdown)"
+        "1=jsonl  ·  2=csv  ·  3=md  ·  4=parquet"
             .dimmed()
     );
     println!("     1  JSON Lines (.jsonl)");
     println!("     2  CSV (.csv)");
     println!("     3  Markdown (.md)");
-    let line = rl.readline("  Enter 1-3 [default: 1]: ").ok()?;
+    println!("     4  Parquet (.parquet)");
+    let line = rl.readline("  Enter 1-4 [default: 1]: ").ok()?;
     let trimmed = line.trim();
     if trimmed.is_empty() {
         return Some(VALUES[0]);
     }
     let n: usize = trimmed.parse().ok()?;
-    if !(1..=3).contains(&n) {
+    if !(1..=4).contains(&n) {
         return None;
     }
     Some(VALUES[n - 1])

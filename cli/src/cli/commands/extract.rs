@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use crate::config::Settings;
 use crate::pipeline::Pipeline;
 use crate::schemas::resolve_schema;
-use crate::storage::{csv_store, jsonl, markdown, ExtractionResult};
+use crate::storage::{csv_store, jsonl, markdown, parquet_store, ExtractionResult};
 
 #[derive(Args, Debug)]
 pub struct ExtractArgs {
@@ -30,12 +30,12 @@ pub struct ExtractArgs {
     #[arg(short, long, default_value = "generic", value_name = "SCHEMA")]
     pub schema: String,
 
-    /// Output format: jsonl, csv, or md
+    /// Output format: jsonl, csv, md, or parquet
     #[arg(short = 'f', long, default_value = "jsonl", value_name = "FORMAT",
-          value_parser = clap::builder::PossibleValuesParser::new(["jsonl", "csv", "md"]))]
+          value_parser = clap::builder::PossibleValuesParser::new(["jsonl", "csv", "md", "parquet"]))]
     pub output_format: String,
 
-    /// Output file path (default: stdout for jsonl, ./output/results.csv|md for others)
+    /// Output file path (default: stdout for jsonl, ./output/results.* for others)
     #[arg(short, long, value_name = "FILE")]
     pub output: Option<PathBuf>,
 
@@ -125,6 +125,19 @@ pub async fn run(args: ExtractArgs, mut config: Settings) -> Result<()> {
                 .clone()
                 .unwrap_or_else(|| PathBuf::from("output/results.md"));
             markdown::save_as_markdown(&all_results, &output_path.display().to_string())?;
+            println!(
+                "{} {} results → {}",
+                "Saved".bright_green().bold(),
+                all_results.len(),
+                output_path.display()
+            );
+        }
+        "parquet" => {
+            let output_path = args
+                .output
+                .clone()
+                .unwrap_or_else(|| PathBuf::from("output/results.parquet"));
+            parquet_store::save_as_parquet(&all_results, &output_path.display().to_string())?;
             println!(
                 "{} {} results → {}",
                 "Saved".bright_green().bold(),

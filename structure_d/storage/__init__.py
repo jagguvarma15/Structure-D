@@ -12,6 +12,7 @@ from structure_d.storage.destinations import (
 )
 from structure_d.storage.jsonl import JSONLWriter
 from structure_d.storage.markdown import MarkdownWriter
+from structure_d.storage.parquet_store import ParquetWriter
 
 __all__ = [
     "BaseDestination",
@@ -20,6 +21,7 @@ __all__ = [
     "DatabaseWriter",
     "JSONLWriter",
     "MarkdownWriter",
+    "ParquetWriter",
     "MySQLWriter",
     "RedshiftWriter",
     "SnowflakeWriter",

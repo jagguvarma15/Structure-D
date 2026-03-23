@@ -41,9 +41,8 @@ pub fn save_as_parquet(results: &[ExtractionResult], path: &str) -> Result<()> {
     let batch = RecordBatch::try_new(schema.clone(), columns).context("build Arrow RecordBatch")?;
 
     let file = File::create(path).with_context(|| format!("Failed to create Parquet file: {}", path))?;
-    let zstd = ZstdLevel::try_new(3).unwrap_or_default();
     let props = WriterProperties::builder()
-        .set_compression(Compression::ZSTD(zstd))
+        .set_compression(Compression::ZSTD(ZstdLevel::default()))
         .build();
     let mut writer = ArrowWriter::try_new(file, schema, Some(props))
         .context("create Parquet ArrowWriter")?;

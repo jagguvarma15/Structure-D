@@ -16,7 +16,7 @@ class ExtractRequest(BaseModel):
     model: str | None = None
     parser: str | None = None
     schema_name: str = "generic"
-    save_format: str | None = None  # jsonl | csv
+    save_format: str | None = None  # jsonl | csv | markdown | parquet
 
 
 class ExtractResponse(BaseModel):

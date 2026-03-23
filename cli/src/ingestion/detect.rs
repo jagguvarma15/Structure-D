@@ -171,6 +171,7 @@ pub enum OutputFormat {
     Json,
     Jsonl,
     Csv,
+    Parquet,
     Markdown,
     PlainText,
 }
@@ -181,6 +182,7 @@ impl std::fmt::Display for OutputFormat {
             OutputFormat::Json      => write!(f, "json"),
             OutputFormat::Jsonl     => write!(f, "jsonl"),
             OutputFormat::Csv       => write!(f, "csv"),
+            OutputFormat::Parquet   => write!(f, "parquet"),
             OutputFormat::Markdown  => write!(f, "markdown"),
             OutputFormat::PlainText => write!(f, "txt"),
         }
@@ -198,17 +200,17 @@ pub fn possible_outputs(input: &DocumentFormat) -> Vec<OutputFormat> {
     use DocumentFormat as DF;
     use OutputFormat as OF;
     match input {
-        DF::Pdf       => vec![OF::Json, OF::Jsonl, OF::Csv, OF::Markdown, OF::PlainText],
-        DF::Docx      => vec![OF::Json, OF::Jsonl, OF::Csv, OF::Markdown, OF::PlainText],
-        DF::Xlsx      => vec![OF::Json, OF::Jsonl, OF::Csv, OF::Markdown],     // tabular → CSV natural
+        DF::Pdf       => vec![OF::Json, OF::Jsonl, OF::Csv, OF::Parquet, OF::Markdown, OF::PlainText],
+        DF::Docx      => vec![OF::Json, OF::Jsonl, OF::Csv, OF::Parquet, OF::Markdown, OF::PlainText],
+        DF::Xlsx      => vec![OF::Json, OF::Jsonl, OF::Csv, OF::Parquet, OF::Markdown], // tabular → CSV / Parquet natural
         DF::Pptx      => vec![OF::Json, OF::Jsonl, OF::Markdown, OF::PlainText], // slides → outline
-        DF::Html      => vec![OF::Json, OF::Jsonl, OF::Csv, OF::Markdown, OF::PlainText],
-        DF::Email     => vec![OF::Json, OF::Jsonl, OF::Csv],                   // structured fields
+        DF::Html      => vec![OF::Json, OF::Jsonl, OF::Csv, OF::Parquet, OF::Markdown, OF::PlainText],
+        DF::Email     => vec![OF::Json, OF::Jsonl, OF::Csv, OF::Parquet],       // structured fields
         DF::Image     => vec![OF::Json, OF::Jsonl, OF::PlainText],             // OCR output
         DF::Audio     => vec![OF::Json, OF::Jsonl, OF::Markdown, OF::PlainText], // transcripts
-        DF::Markdown  => vec![OF::Json, OF::Jsonl, OF::Csv, OF::PlainText],
+        DF::Markdown  => vec![OF::Json, OF::Jsonl, OF::Csv, OF::Parquet, OF::PlainText],
         DF::Csv       => vec![OF::Json, OF::Jsonl, OF::Markdown],              // already structured
-        DF::PlainText => vec![OF::Json, OF::Jsonl, OF::Csv, OF::Markdown],
+        DF::PlainText => vec![OF::Json, OF::Jsonl, OF::Csv, OF::Parquet, OF::Markdown],
         DF::Unknown   => vec![OF::Json, OF::Jsonl],                            // best-effort only
     }
 }

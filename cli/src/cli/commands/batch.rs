@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use crate::config::Settings;
 use crate::pipeline::Pipeline;
 use crate::schemas::resolve_schema;
-use crate::storage::{csv_store, jsonl, markdown};
+use crate::storage::{csv_store, jsonl, markdown, parquet_store};
 
 #[derive(Args, Debug)]
 pub struct BatchArgs {
@@ -30,12 +30,12 @@ pub struct BatchArgs {
     #[arg(short, long, default_value = "generic")]
     pub schema: String,
 
-    /// Output format: jsonl, csv, or md
+    /// Output format: jsonl, csv, md, or parquet
     #[arg(
         short = 'f',
         long,
         default_value = "jsonl",
-        value_parser = clap::builder::PossibleValuesParser::new(["jsonl", "csv", "md"])
+        value_parser = clap::builder::PossibleValuesParser::new(["jsonl", "csv", "md", "parquet"])
     )]
     pub output_format: String,
 
@@ -133,6 +133,13 @@ pub async fn run(args: BatchArgs, mut config: Settings) -> Result<()> {
                 .output
                 .unwrap_or_else(|| PathBuf::from("output/batch_results.md"));
             markdown::save_as_markdown(&all_results, &path.display().to_string())?;
+            println!("{} → {}", "Saved".bright_green(), path.display());
+        }
+        "parquet" => {
+            let path = args
+                .output
+                .unwrap_or_else(|| PathBuf::from("output/batch_results.parquet"));
+            parquet_store::save_as_parquet(&all_results, &path.display().to_string())?;
             println!("{} → {}", "Saved".bright_green(), path.display());
         }
         _ => unreachable!(),

@@ -6,6 +6,10 @@ import csv
 import json
 from pathlib import Path
 
+import importlib.util
+
+import pytest
+
 from structure_d.schemas.base import DocumentFormat, ExtractionResult, TaskType
 from structure_d.storage.csv_store import CSVWriter
 from structure_d.storage.jsonl import JSONLWriter
@@ -129,3 +133,24 @@ def test_csv_nested_output_flattened(tmp_path: Path):
         row = next(reader)
     assert row["person.name"] == "Alice"
     assert row["person.age"] == "30"
+
+
+# ── Parquet tests (optional pyarrow) ─────────────────────────────────────────
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("pyarrow") is None,
+    reason="pyarrow not installed (pip install 'structure-d[parquet]')",
+)
+def test_parquet_write_creates_file(tmp_path: Path):
+    from structure_d.storage.parquet_store import ParquetWriter
+
+    writer = ParquetWriter(output_dir=tmp_path)
+    results = _make_results(2)
+    path = writer.write(results, "out.parquet")
+
+    assert path.exists()
+    import pyarrow.parquet as pq
+
+    table = pq.read_table(path)
+    assert table.num_rows == 2

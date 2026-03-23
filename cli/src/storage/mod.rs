@@ -1,6 +1,8 @@
 pub mod csv_store;
 pub mod jsonl;
 pub mod markdown;
+pub mod parquet_store;
+pub mod tabular;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

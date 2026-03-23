@@ -37,6 +37,7 @@ from structure_d.schemas.base import (
 from structure_d.storage.csv_store import CSVWriter
 from structure_d.storage.jsonl import JSONLWriter
 from structure_d.storage.markdown import MarkdownWriter
+from structure_d.storage.parquet_store import ParquetWriter
 from structure_d.validation.retry import RetryHandler
 
 logger = structlog.get_logger(__name__)
@@ -315,6 +316,8 @@ class Pipeline:
                 self.csv_writer.write(validated, f"{fname}.csv")
             elif fmt == "markdown":
                 self.md_writer.write(validated, f"{fname}.md")
+            elif fmt == "parquet":
+                self.parquet_writer.write(validated, f"{fname}.parquet")
 
             elapsed = (time.monotonic() - t0) * 1000
             valid_count = sum(1 for r in validated if r.is_valid)
