@@ -74,7 +74,8 @@ impl MarkdownWriter {
             writeln!(file, "### Extracted data\n")?;
             match &result.structured_output {
                 Some(v) if !v.is_null() => {
-                    let body = json_value_to_markdown(v, 0);
+                    let body = render_schema_aware(&result.task, v)
+                        .unwrap_or_else(|| json_value_to_markdown(v, 0));
                     writeln!(file, "{}", body.trim_end())?;
                     writeln!(file)?;
                 }
@@ -95,6 +96,176 @@ impl MarkdownWriter {
         }
 
         Ok(())
+    }
+}
+
+fn render_with_layout(task: &str, value: &Value) -> (&'static str, String) {
+    if is_summary_payload(task, value) {
+        return ("summary", render_summary_markdown(value));
+    }
+    if is_classification_payload(task, value) {
+        return ("classification", render_classification_markdown(value));
+    }
+    if is_form_payload(task, value) {
+        return ("form", render_form_markdown(value));
+    }
+    ("generic", json_value_to_markdown(value, 0))
+}
+
+fn is_summary_payload(task: &str, value: &Value) -> bool {
+    let t = task.to_ascii_lowercase();
+    if t.contains("summary") || t.contains("summar") {
+        return true;
+    }
+    match value {
+        Value::Object(m) => m.contains_key("summary") || m.contains_key("key_points") || m.contains_key("bullet_points"),
+        _ => false,
+    }
+}
+
+fn is_classification_payload(task: &str, value: &Value) -> bool {
+    let t = task.to_ascii_lowercase();
+    if t.contains("classif") || t.contains("sentiment") {
+        return true;
+    }
+    match value {
+        Value::Object(m) => m.contains_key("label") && (m.contains_key("confidence") || m.contains_key("secondary_labels") || m.contains_key("labels") || m.contains_key("scores")),
+        _ => false,
+    }
+}
+
+fn is_form_payload(task: &str, value: &Value) -> bool {
+    let t = task.to_ascii_lowercase();
+    if t.contains("form") {
+        return true;
+    }
+    match value {
+        Value::Object(m) => m.get("fields").map(|f| f.is_array()).unwrap_or(false),
+        _ => false,
+    }
+}
+
+fn render_summary_markdown(value: &Value) -> String {
+    let mut out = String::new();
+    if let Value::Object(m) = value {
+        if let Some(title) = m.get("title").and_then(|v| v.as_str()) {
+            if !title.trim().is_empty() {
+                out.push_str(&format!("#### {}\n\n", title.trim()));
+            }
+        }
+        if let Some(summary) = m.get("summary").and_then(|v| v.as_str()) {
+            if !summary.trim().is_empty() {
+                out.push_str(summary.trim());
+                out.push_str("\n\n");
+            }
+        }
+        let points = m.get("key_points").or_else(|| m.get("bullet_points"));
+        if let Some(Value::Array(arr)) = points {
+            if !arr.is_empty() {
+                out.push_str("**Key points**\n");
+                for p in arr {
+                    out.push_str(&format!("- {}\n", scalar_for_list_item(p)));
+                }
+                out.push('\n');
+            }
+        }
+        if let Some(wc) = m.get("word_count_estimate") {
+            out.push_str(&format!("_Word count estimate: {}_\n", scalar_for_list_item(wc)));
+        }
+    }
+    if out.trim().is_empty() {
+        json_value_to_markdown(value, 0)
+    } else {
+        out
+    }
+}
+
+fn render_classification_markdown(value: &Value) -> String {
+    let mut out = String::new();
+    if let Value::Object(m) = value {
+        out.push_str("| Field | Value |\n|---|---|\n");
+        if let Some(label) = m.get("label") {
+            out.push_str(&format!("| Label | {} |\n", escape_table_cell(&scalar_for_list_item(label))));
+        }
+        if let Some(conf) = m.get("confidence") {
+            out.push_str(&format!("| Confidence | {} |\n", escape_table_cell(&scalar_for_list_item(conf))));
+        }
+        out.push('\n');
+
+        if let Some(reasoning) = m.get("reasoning").and_then(|v| v.as_str()) {
+            if !reasoning.trim().is_empty() {
+                out.push_str("**Reasoning**\n\n");
+                out.push_str(reasoning.trim());
+                out.push_str("\n\n");
+            }
+        }
+
+        if let (Some(Value::Array(labels)), Some(Value::Array(scores))) = (m.get("labels"), m.get("scores")) {
+            if !labels.is_empty() && labels.len() == scores.len() {
+                out.push_str("**Candidate labels**\n\n");
+                out.push_str("| Label | Score |\n|---|---|\n");
+                for (l, s) in labels.iter().zip(scores.iter()) {
+                    out.push_str(&format!(
+                        "| {} | {} |\n",
+                        escape_table_cell(&scalar_for_list_item(l)),
+                        escape_table_cell(&scalar_for_list_item(s))
+                    ));
+                }
+                out.push('\n');
+            }
+        }
+
+        if let Some(Value::Array(sec)) = m.get("secondary_labels") {
+            if !sec.is_empty() {
+                out.push_str("**Secondary labels**\n");
+                for item in sec {
+                    out.push_str(&format!("- {}\n", scalar_for_list_item(item)));
+                }
+                out.push('\n');
+            }
+        }
+    }
+    if out.trim().is_empty() {
+        json_value_to_markdown(value, 0)
+    } else {
+        out
+    }
+}
+
+fn render_form_markdown(value: &Value) -> String {
+    let mut out = String::new();
+    if let Value::Object(m) = value {
+        if let Some(form_type) = m.get("form_type").and_then(|v| v.as_str()) {
+            if !form_type.trim().is_empty() {
+                out.push_str(&format!("**Form type:** {}\n\n", form_type.trim()));
+            }
+        }
+        if let Some(Value::Array(fields)) = m.get("fields") {
+            if !fields.is_empty() && fields.iter().all(|x| x.is_object()) {
+                out.push_str("| Field name | Value | Type | Page |\n|---|---|---|---|\n");
+                for item in fields {
+                    if let Value::Object(fm) = item {
+                        let name = fm.get("field_name").map(scalar_for_list_item).unwrap_or_else(|| "—".to_string());
+                        let val = fm.get("field_value").map(scalar_for_list_item).unwrap_or_else(|| "—".to_string());
+                        let ty = fm.get("field_type").map(scalar_for_list_item).unwrap_or_else(|| "—".to_string());
+                        let page = fm.get("page").map(scalar_for_list_item).unwrap_or_else(|| "—".to_string());
+                        out.push_str(&format!(
+                            "| {} | {} | {} | {} |\n",
+                            escape_table_cell(&name),
+                            escape_table_cell(&val),
+                            escape_table_cell(&ty),
+                            escape_table_cell(&page),
+                        ));
+                    }
+                }
+                out.push('\n');
+            }
+        }
+    }
+    if out.trim().is_empty() {
+        json_value_to_markdown(value, 0)
+    } else {
+        out
     }
 }
 

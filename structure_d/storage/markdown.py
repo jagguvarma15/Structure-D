@@ -70,7 +70,7 @@ class MarkdownWriter:
         if so is None or (isinstance(so, dict) and not so) or (isinstance(so, list) and not so):
             lines.append("_No structured output._\n")
         else:
-            lines.append(_structured_to_markdown(so, depth=0).rstrip())
+            lines.append(_render_schema_aware(so, task=result.task.value).rstrip())
             lines.append("\n")
 
         # ── Validation ────────────────────────────────────────────────────────
@@ -83,6 +83,128 @@ class MarkdownWriter:
         lines.append("\n")
 
         return "\n".join(lines)
+
+
+def _render_with_layout(data: Any, *, task: str) -> tuple[str, str]:
+    if _is_summary_payload(task, data):
+        return "summary", _render_summary_markdown(data)
+    if _is_classification_payload(task, data):
+        return "classification", _render_classification_markdown(data)
+    if _is_form_payload(task, data):
+        return "form", _render_form_markdown(data)
+    return "generic", _structured_to_markdown(data, depth=0)
+
+
+def _is_summary_payload(task: str, data: Any) -> bool:
+    t = task.lower()
+    if "summary" in t or "summaris" in t:
+        return True
+    return isinstance(data, dict) and any(k in data for k in ("summary", "key_points", "bullet_points"))
+
+
+def _is_classification_payload(task: str, data: Any) -> bool:
+    t = task.lower()
+    if "classif" in t or "sentiment" in t:
+        return True
+    if not isinstance(data, dict):
+        return False
+    return "label" in data and any(k in data for k in ("confidence", "secondary_labels", "labels", "scores"))
+
+
+def _is_form_payload(task: str, data: Any) -> bool:
+    t = task.lower()
+    if "form" in t:
+        return True
+    return isinstance(data, dict) and isinstance(data.get("fields"), list)
+
+
+def _render_summary_markdown(data: Any) -> str:
+    if not isinstance(data, dict):
+        return _structured_to_markdown(data)
+    parts: list[str] = []
+    title = str(data.get("title", "")).strip()
+    if title:
+        parts.append(f"#### {title}\n")
+    summary = str(data.get("summary", "")).strip()
+    if summary:
+        parts.append(summary + "\n")
+    points = data.get("key_points") if isinstance(data.get("key_points"), list) else data.get("bullet_points")
+    if isinstance(points, list) and points:
+        parts.append("**Key points**")
+        parts.extend(f"- {_scalar_for_list(p)}" for p in points)
+        parts.append("")
+    if "word_count_estimate" in data:
+        parts.append(f"_Word count estimate: {_scalar_for_list(data['word_count_estimate'])}_")
+    rendered = "\n".join(parts).strip()
+    return rendered + "\n" if rendered else _structured_to_markdown(data)
+
+
+def _render_classification_markdown(data: Any) -> str:
+    if not isinstance(data, dict):
+        return _structured_to_markdown(data)
+    lines: list[str] = ["| Field | Value |", "|---|---|"]
+    if "label" in data:
+        lines.append(f"| Label | {_table_cell(data['label'])} |")
+    if "confidence" in data:
+        lines.append(f"| Confidence | {_table_cell(data['confidence'])} |")
+    lines.append("")
+
+    reasoning = str(data.get("reasoning", "")).strip()
+    if reasoning:
+        lines.extend(["**Reasoning**", "", reasoning, ""])
+
+    labels = data.get("labels")
+    scores = data.get("scores")
+    if isinstance(labels, list) and isinstance(scores, list) and labels and len(labels) == len(scores):
+        lines.extend(["**Candidate labels**", "", "| Label | Score |", "|---|---|"])
+        for label, score in zip(labels, scores):
+            lines.append(f"| {_table_cell(label)} | {_table_cell(score)} |")
+        lines.append("")
+
+    secondary = data.get("secondary_labels")
+    if isinstance(secondary, list) and secondary:
+        lines.append("**Secondary labels**")
+        lines.extend(f"- {_scalar_for_list(v)}" for v in secondary)
+        lines.append("")
+
+    rendered = "\n".join(lines).strip()
+    return rendered + "\n" if rendered else _structured_to_markdown(data)
+
+
+def _render_form_markdown(data: Any) -> str:
+    if not isinstance(data, dict):
+        return _structured_to_markdown(data)
+    lines: list[str] = []
+    form_type = str(data.get("form_type", "")).strip()
+    if form_type:
+        lines.append(f"**Form type:** {form_type}\n")
+
+    fields = data.get("fields")
+    if isinstance(fields, list) and fields and all(isinstance(x, dict) for x in fields):
+        lines.extend([
+            "| Field name | Value | Type | Page |",
+            "|---|---|---|---|",
+        ])
+        for item in fields:
+            lines.append(
+                "| " + " | ".join(
+                    [
+                        _table_cell(item.get("field_name", "—")),
+                        _table_cell(item.get("field_value", "—")),
+                        _table_cell(item.get("field_type", "—")),
+                        _table_cell(item.get("page", "—")),
+                    ]
+                ) + " |"
+            )
+        lines.append("")
+
+    rendered = "\n".join(lines).strip()
+    return rendered + "\n" if rendered else _structured_to_markdown(data)
+
+
+def _table_cell(v: Any) -> str:
+    return _scalar_for_list(v).replace("|", "\\|").replace("\n", " ")
+
 
 
 def _structured_to_markdown(data: Any, depth: int = 0) -> str:
