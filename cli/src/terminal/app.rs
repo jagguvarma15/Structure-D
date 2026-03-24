@@ -426,7 +426,7 @@ fn print_help() {
 
     println!(
         "\n  {}",
-        "Tip: In arrow menus, use ↑/↓ or j/k. Short terminals may show only part of the list — keep scrolling."
+        "Tip: Schema / output use arrow menus (green ❯ on the focused row). If you see “Enter 1-8” instead, run ./target/release/structure-d from this repo after cargo build --release."
             .dimmed()
     );
     println!();
@@ -453,6 +453,8 @@ fn select_builtin_schema(theme: &dialoguer::theme::ColorfulTheme) -> Option<&'st
         .with_prompt("  Schema")
         .items(&schemas)
         .default(0)
+        // Prefer showing all 8 built-ins on one page when the terminal is tall enough.
+        .max_length(8)
         .interact_opt()
     {
         Ok(Some(i)) => i,
@@ -477,6 +479,7 @@ fn select_output_format_menu(theme: &dialoguer::theme::ColorfulTheme) -> Option<
         .with_prompt("  Output format")
         .items(LABELS)
         .default(0)
+        .max_length(6)
         .interact_opt()
     {
         Ok(Some(i)) => i,
